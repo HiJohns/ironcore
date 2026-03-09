@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -466,6 +467,142 @@ func (db *DB) GetAllTags() ([]TagCloudItem, error) {
 	}
 
 	return tags, rows.Err()
+}
+
+// SearchKBItems searches KB items by keyword in title, content, or tags
+func (db *DB) SearchKBItems(keyword string, limit, offset int) (*PaginatedKBItems, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	// Normalize keyword for SQL LIKE
+	searchPattern := "%" + strings.ToLower(keyword) + "%"
+
+	query := `
+		SELECT DISTINCT k.id, k.title, k.content, k.tldr, k.original_url, k.impact_score, k.created_at, k.updated_at
+		FROM kb_items k
+		LEFT JOIN item_tags it ON k.id = it.item_id
+		LEFT JOIN tags t ON it.tag_id = t.id
+		WHERE LOWER(k.title) LIKE ? 
+		   OR LOWER(k.content) LIKE ? 
+		   OR LOWER(k.tldr) LIKE ?
+		   OR LOWER(t.name) LIKE ?
+		ORDER BY k.impact_score DESC, k.created_at DESC
+		LIMIT ? OFFSET ?
+	`
+
+	rows, err := db.conn.Query(query, searchPattern, searchPattern, searchPattern, searchPattern, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search kb_items: %w", err)
+	}
+	defer rows.Close()
+
+	var items []KBItem
+	for rows.Next() {
+		var item KBItem
+		var createdAt, updatedAt string
+		err := rows.Scan(&item.ID, &item.Title, &item.Content, &item.TLDR, &item.OriginalURL, &item.ImpactScore, &createdAt, &updatedAt)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan kb item: %w", err)
+		}
+		// Parse timestamps with explicit error handling
+		item.CreatedAt, err = time.Parse(time.RFC3339, createdAt)
+		if err != nil {
+			log.Printf("[WARN] Failed to parse created_at for item %s: %v", item.ID, err)
+			item.CreatedAt = time.Now() // fallback to current time
+		}
+		item.UpdatedAt, err = time.Parse(time.RFC3339, updatedAt)
+		if err != nil {
+			log.Printf("[WARN] Failed to parse updated_at for item %s: %v", item.ID, err)
+			item.UpdatedAt = item.CreatedAt // fallback to created_at
+		}
+
+		items = append(items, item)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating search results: %w", err)
+	}
+
+	// Batch load all tags for collected items to avoid N+1 query
+	if len(items) > 0 {
+		itemIDs := make([]string, len(items))
+		itemMap := make(map[string]*KBItem, len(items))
+		for i := range items {
+			itemIDs[i] = items[i].ID
+			itemMap[items[i].ID] = &items[i]
+		}
+
+		// Single query to get all tags for all items
+		placeholders := make([]string, len(itemIDs))
+		args := make([]interface{}, len(itemIDs))
+		for i, id := range itemIDs {
+			placeholders[i] = "?"
+			args[i] = id
+		}
+
+		tagQuery := fmt.Sprintf(`
+			SELECT it.item_id, t.name 
+			FROM item_tags it
+			JOIN tags t ON it.tag_id = t.id
+			WHERE it.item_id IN (%s)
+		`, strings.Join(placeholders, ","))
+
+		tagRows, err := db.conn.Query(tagQuery, args...)
+		if err != nil {
+			log.Printf("[WARN] Failed to batch load tags: %v", err)
+		} else {
+			defer tagRows.Close()
+			for tagRows.Next() {
+				var itemID, tagName string
+				if err := tagRows.Scan(&itemID, &tagName); err == nil {
+					if item, exists := itemMap[itemID]; exists {
+						item.Tags = append(item.Tags, tagName)
+					}
+				}
+			}
+		}
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating search results: %w", err)
+	}
+
+	// Get total count for pagination
+	var total int
+	countQuery := `
+		SELECT COUNT(DISTINCT k.id)
+		FROM kb_items k
+		LEFT JOIN item_tags it ON k.id = it.item_id
+		LEFT JOIN tags t ON it.tag_id = t.id
+		WHERE LOWER(k.title) LIKE ? 
+		   OR LOWER(k.content) LIKE ? 
+		   OR LOWER(k.tldr) LIKE ?
+		   OR LOWER(t.name) LIKE ?
+	`
+	err = db.conn.QueryRow(countQuery, searchPattern, searchPattern, searchPattern, searchPattern).Scan(&total)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count search results: %w", err)
+	}
+
+	// Calculate pagination metadata
+	page := offset/limit + 1
+	perPage := limit
+	totalPages := total / perPage
+	if total%perPage > 0 {
+		totalPages++
+	}
+
+	return &PaginatedKBItems{
+		Items:      items,
+		Total:      total,
+		Page:       page,
+		PerPage:    perPage,
+		TotalPages: totalPages,
+	}, nil
 }
 
 // GenerateSlug creates a URL-friendly slug from a title

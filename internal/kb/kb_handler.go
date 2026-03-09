@@ -163,6 +163,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware func(http.Ha
 	mux.HandleFunc("/api/kb/list", authMiddleware(h.HandleListByTag))
 	mux.HandleFunc("/api/kb/tags", authMiddleware(h.HandleListTags))
 	mux.HandleFunc("/api/kb/status", authMiddleware(h.HandleGetStatus))
+	mux.HandleFunc("/api/kb/search", authMiddleware(h.HandleSearch))
 }
 
 // HandleIngest handles the POST /api/kb/ingest endpoint
@@ -406,6 +407,48 @@ func (h *Handler) HandleGetStatus(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(job)
+}
+
+// HandleSearch handles GET /api/kb/search?q=keyword endpoint
+func (h *Handler) HandleSearch(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	keyword := r.URL.Query().Get("q")
+	if keyword == "" {
+		http.Error(w, "Missing search query", http.StatusBadRequest)
+		return
+	}
+
+	// Parse pagination params with explicit error handling
+	limit := 20
+	offset := 0
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
+			limit = parsed
+		} else if err != nil {
+			log.Printf("[WARN] Invalid limit parameter '%s': %v", l, err)
+		}
+	}
+	if o := r.URL.Query().Get("offset"); o != "" {
+		if parsed, err := strconv.Atoi(o); err == nil && parsed >= 0 {
+			offset = parsed
+		} else if err != nil {
+			log.Printf("[WARN] Invalid offset parameter '%s': %v", o, err)
+		}
+	}
+
+	results, err := h.db.SearchKBItems(keyword, limit, offset)
+	if err != nil {
+		log.Printf("[KB] Search failed: %v", err)
+		http.Error(w, "Search failed", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(results)
 }
 
 // LogIngestion logs a knowledge ingestion event

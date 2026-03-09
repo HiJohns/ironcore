@@ -1,5 +1,13 @@
 [TODO]
 
+- [Frontend] 为 report-v2 项目设计并替换全新的 SVG 格式 Favicon
+  - 创建文件：frontend/public/favicon.svg
+  - 图形设计：viewBox="0 0 100 100"，微圆角六边形背景，深蓝(#1E3A8A)到亮青(#06B6D4)渐变
+  - 核心符号：白色 "R" + 向上折线组合，stroke-width 6-8
+  - 更新 HTML：frontend/index.html 引入 `<link rel="icon" type="image/svg+xml" href="/favicon.svg" />`
+
+[WIP]
+
 [READY]
 
 [TODO]
@@ -131,6 +139,33 @@
 [READY]
 
 [DONE]
+
+### [2026-03-09] KB Dashboard 渲染、Sidebar、全局搜索功能
+**Status**: ✅ 已完成并通过代码审查
+**Patches**: review_TaskA_DashboardDB_Fix.patch, review_TaskB_KBItems_Render.patch, review_TaskD_Global_Search.patch
+
+**核心变更：**
+1. **DashboardData 初始化修复**
+   - 扩展 DashboardData 结构体添加 KBItems 字段
+   - handleDashboard 函数中复用全局 DB 实例获取最近 10 条 KB 条目
+   - 添加 nil 检查避免空指针异常
+
+2. **KB 条目后端渲染**
+   - 实现后端模板渲染 KB 条目网格卡片
+   - 支持 ImpactScore 高亮显示(≥0.8 显示徽章)
+   - TLDR 摘要展示和格式化日期显示
+
+3. **Sidebar 详情面板**
+   - 右侧滑出式详情面板，点击卡片打开
+   - 通过 fetch('/share/:id') 加载 goldmark 转换后的 HTML
+   - 集成 sanitizeHtml() XSS 防护
+   - "生成外部链接"按钮支持复制 /share/:id 链接
+
+4. **全局搜索功能**
+   - 搜索栏支持关键词实时搜索
+   - SearchKBItems() 支持标题、内容、TLDR、标签多字段模糊搜索
+   - 修复时间解析错误显式处理、N+1 查询改为批量预加载
+   - strconv.Atoi 参数错误添加日志记录
 
 ### [2026-03-09] UI 重构与简化 (删除 dashboard.go, Cookie 状态持久化, 预览逻辑简化)
 **Status**: ✅ 已完成并通过代码审查

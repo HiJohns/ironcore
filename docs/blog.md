@@ -18,3 +18,10 @@
 - **异步清理机制**: 为 kb_handler.go 的 jobStore 添加 TTL(24小时) 过期逻辑和每小时后台清理协程，使用 sync.Once 确保协程只启动一次，防止内存泄漏。
 - **UI 重构与简化**: 删除冗余 internal/kb/dashboard.go (415行)，将活跃 UI 逻辑收拢至 main.go 内嵌模板；实现刷新状态持久化(Cookie active_tab)，后端根据 Cookie 值切换初始 Tab 显示；简化预览逻辑，移除 iframe 直接使用 div 渲染，添加 sanitizeHtml() XSS 防护函数，使用 {{js .Name}} 模板转义防止注入。
 
+
+### Raw Entry
+
+- **KB Dashboard 渲染与交互**: 完成 DashboardData 结构体扩展(KBItems 字段)，实现后端渲染 KB 条目网格卡片，支持 ImpactScore 高亮显示(≥0.8)和 TLDR 摘要，后端模板条件渲染解决前端 hydration 问题。
+- **Sidebar 详情面板**: 实现右侧滑出式详情面板，通过 fetch('/share/:id') 加载内容并使用 DOMParser 解析提取标题和正文，集成 sanitizeHtml() XSS 防护，提供"生成外部链接"按钮复制 /share/:id 链接到剪贴板。
+- **全局搜索功能**: 实现 SearchKBItems() 支持标题、内容、TLDR、标签多字段模糊搜索，修复时间解析错误显式处理、N+1 查询改为批量预加载、strconv.Atoi 参数错误日志记录，前端实现 performSearch() 实时搜索和 renderSearchResults() 结果渲染。
+

@@ -354,6 +354,7 @@ type AuditStatus struct {
 type DashboardData struct {
 	AuditStatus
 	ActiveTab string
+	KBItems   []kb.KBItem // Recent KB items for rendering
 }
 
 var (
@@ -861,6 +862,15 @@ var dashboardHTML = `
             <div id="kb-result" class="kb-result" style="display: none; margin-top: 15px; padding: 12px; border-radius: 6px;"></div>
         </div>
         
+        <div class="kb-search-box" style="margin-bottom: 30px;">
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <input type="text" id="kb-search-input" placeholder="🔍 搜索知识库..." style="flex: 1; padding: 12px 16px; border-radius: 8px; border: 1px solid #444; background: #0f0f1e; color: #eee; font-size: 14px;" onkeyup="if(event.key==='Enter')performSearch()">
+                <button class="sync-btn" onclick="performSearch()" style="padding: 12px 24px;">搜索</button>
+                <button class="sync-btn" onclick="clearSearch()" style="padding: 12px 20px; background: #444;">清空</button>
+            </div>
+            <div id="kb-search-results-info" style="margin-top: 10px; color: #888; font-size: 13px; display: none;"></div>
+        </div>
+
         <div class="kb-tag-cloud" style="margin-bottom: 30px;">
             <h3 style="color: #00d4ff; margin-bottom: 15px;">🏷️ 标签云</h3>
             <div id="tag-cloud-container"><p style="color: #888;">点击知识库选项卡加载数据</p></div>
@@ -868,9 +878,43 @@ var dashboardHTML = `
         
         <div class="kb-items-list">
             <h3 style="color: #00d4ff; margin-bottom: 15px;">📖 最近录入</h3>
-            <div id="kb-items-container"><p style="color: #888;">点击知识库选项卡加载数据</p></div>
+            {{if .KBItems}}
+            <div class="kb-items-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px;">
+                {{range .KBItems}}
+                <div class="kb-item-card" onclick="openSidebar('{{.ID}}')" style="background: #0f0f1e; border: 1px solid #333; border-radius: 8px; padding: 15px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='#00d4ff'" onmouseout="this.style.borderColor='#333'">
+                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
+                        <h4 style="color: #00d4ff; margin: 0; font-size: 14px; line-height: 1.4;">{{.Title}}</h4>
+                        {{if ge .ImpactScore 0.8}}<span class="news-badge impact-high">{{printf "%.2f" .ImpactScore}}</span>{{end}}
+                    </div>
+                    {{if .TLDR}}<p style="color: #888; font-size: 12px; margin: 0 0 10px 0; line-height: 1.5;">{{.TLDR}}</p>{{end}}
+                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #666;">
+                        <span>{{.CreatedAt.Format "2006-01-02"}}</span>
+                        <span style="color: #00d4ff;">查看详情 →</span>
+                    </div>
+                </div>
+                {{end}}
+            </div>
+            {{else}}
+            <div id="kb-items-container"><p style="color: #888;">暂无知识条目</p></div>
+            {{end}}
         </div>
     </div>
+
+    <!-- Sidebar for KB Item Details -->
+    <div id="kb-sidebar" style="display: none; position: fixed; top: 0; right: 0; width: 500px; height: 100%; background: #1a1a2e; border-left: 1px solid #333; z-index: 1001; overflow-y: auto; box-shadow: -5px 0 20px rgba(0,0,0,0.5);">
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 20px; border-bottom: 1px solid #333; background: #16213e;">
+            <h3 id="sidebar-title" style="color: #00d4ff; margin: 0; font-size: 18px;"></h3>
+            <button onclick="closeSidebar()" style="background: none; border: none; color: #888; font-size: 24px; cursor: pointer;">✕</button>
+        </div>
+        <div id="sidebar-content" style="padding: 20px; color: #ccc; line-height: 1.8;">
+            <p>加载中...</p>
+        </div>
+        <div style="padding: 20px; border-top: 1px solid #333; background: #16213e;">
+            <button onclick="generateShareLink()" class="sync-btn" style="width: 100%;">🔗 生成外部链接</button>
+            <div id="share-link-result" style="margin-top: 10px; word-break: break-all; font-size: 12px; color: #888; display: none;"></div>
+        </div>
+    </div>
+    <div id="kb-sidebar-overlay" onclick="closeSidebar()" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;"></div>
 
     <!-- Preview Modal -->
     <div id="kb-preview-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; overflow-y: auto;">
@@ -1034,6 +1078,57 @@ var dashboardHTML = `
             if (e.target === this) closePreviewModal();
         });
 
+        // Sidebar functions for KB item details
+        let currentItemId = null;
+
+        function openSidebar(itemId) {
+            currentItemId = itemId;
+            document.getElementById('kb-sidebar').style.display = 'block';
+            document.getElementById('kb-sidebar-overlay').style.display = 'block';
+            document.body.style.overflow = 'hidden';
+            
+            // Fetch item details
+            fetch('/share/' + encodeURIComponent(itemId))
+            .then(r => r.text())
+            .then(html => {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                const title = doc.querySelector('h1, h2') ? doc.querySelector('h1, h2').textContent : '详情';
+                const bodyContent = doc.body ? doc.body.innerHTML : html;
+                
+                document.getElementById('sidebar-title').textContent = title;
+                document.getElementById('sidebar-content').innerHTML = sanitizeHtml(bodyContent);
+            })
+            .catch(err => {
+                document.getElementById('sidebar-content').innerHTML = '<p style="color: #ff6b6b;">加载失败: ' + escapeHtml(err.message) + '</p>';
+            });
+            
+            // Reset share link result
+            document.getElementById('share-link-result').style.display = 'none';
+        }
+
+        function closeSidebar() {
+            document.getElementById('kb-sidebar').style.display = 'none';
+            document.getElementById('kb-sidebar-overlay').style.display = 'none';
+            document.body.style.overflow = '';
+            currentItemId = null;
+        }
+
+        function generateShareLink() {
+            if (!currentItemId) return;
+            const shareUrl = window.location.origin + '/share/' + encodeURIComponent(currentItemId);
+            const resultDiv = document.getElementById('share-link-result');
+            resultDiv.textContent = shareUrl;
+            resultDiv.style.display = 'block';
+            
+            // Copy to clipboard
+            navigator.clipboard.writeText(shareUrl).then(() => {
+                resultDiv.innerHTML = shareUrl + '<br><span style="color: #28a745;">✓ 已复制到剪贴板</span>';
+            }).catch(() => {
+                resultDiv.innerHTML = shareUrl + '<br><span style="color: #ffc107;">请手动复制链接</span>';
+            });
+        }
+
         let currentTagFilter = null;
         
         function filterByTag(tag) {
@@ -1065,6 +1160,70 @@ var dashboardHTML = `
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+
+        // Global search functions
+        let currentSearchQuery = '';
+
+        function performSearch() {
+            const query = document.getElementById('kb-search-input').value.trim();
+            if (!query) {
+                clearSearch();
+                return;
+            }
+
+            currentSearchQuery = query;
+            const resultsInfo = document.getElementById('kb-search-results-info');
+            resultsInfo.style.display = 'block';
+            resultsInfo.innerHTML = '<span style="color: #00d4ff;">🔍 搜索中...</span>';
+
+            fetch('/api/kb/search?q=' + encodeURIComponent(query) + '&limit=20')
+            .then(r => r.json())
+            .then(data => {
+                renderSearchResults(data, query);
+            })
+            .catch(err => {
+                resultsInfo.innerHTML = '<span style="color: #ff6b6b;">搜索失败: ' + escapeHtml(err.message) + '</span>';
+            });
+        }
+
+        function clearSearch() {
+            currentSearchQuery = '';
+            document.getElementById('kb-search-input').value = '';
+            document.getElementById('kb-search-results-info').style.display = 'none';
+            // Reload default items
+            loadKBItems();
+        }
+
+        function renderSearchResults(data, query) {
+            const resultsInfo = document.getElementById('kb-search-results-info');
+            const container = document.getElementById('kb-items-container');
+            const items = data.items || [];
+            const total = data.total || 0;
+
+            resultsInfo.innerHTML = '找到 <strong style="color: #00d4ff;">' + total + '</strong> 条结果 for "' + escapeHtml(query) + '"';
+
+            if (items.length === 0) {
+                container.innerHTML = '<p style="color: #888; text-align: center; padding: 40px;">未找到匹配的知识条目</p>';
+                return;
+            }
+
+            // Render search results in grid format
+            container.innerHTML = '<div class="kb-items-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px;">' +
+                items.map(item =>
+                    '<div class="kb-item-card" onclick="openSidebar(\'' + encodeURIComponent(item.id) + '\')" style="background: #0f0f1e; border: 1px solid #333; border-radius: 8px; padding: 15px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor=\'#00d4ff\'" onmouseout="this.style.borderColor=\'#333\'">' +
+                        '<div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">' +
+                            '<h4 style="color: #00d4ff; margin: 0; font-size: 14px; line-height: 1.4;">' + escapeHtml(item.title) + '</h4>' +
+                            (item.impact_score >= 0.8 ? '<span class="news-badge impact-high">' + item.impact_score.toFixed(2) + '</span>' : '') +
+                        '</div>' +
+                        (item.tldr ? '<p style="color: #888; font-size: 12px; margin: 0 0 10px 0; line-height: 1.5;">' + escapeHtml(item.tldr) + '</p>' : '') +
+                        '<div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #666;">' +
+                            '<span>' + new Date(item.created_at).toLocaleDateString() + '</span>' +
+                            '<span style="color: #00d4ff;">查看详情 →</span>' +
+                        '</div>' +
+                    '</div>'
+                ).join('') +
+            '</div>';
         }
     </script>
 </body>
@@ -2044,6 +2203,19 @@ func handleDashboard(w http.ResponseWriter, r *http.Request) {
 		AuditStatus: globalStatus,
 		ActiveTab:   activeTab,
 	}
+
+	// Fetch recent KB items if DB connection is available
+	if db != nil {
+		kbDB := kb.NewDBFromConn(db)
+		if result, err := kbDB.ListKBItems(nil, 10, 0); err == nil {
+			data.KBItems = result.Items
+		} else {
+			log.Printf("[WARN] Failed to fetch KB items: %v", err)
+		}
+	} else {
+		log.Printf("[WARN] DB connection is nil, skipping KB items fetch")
+	}
+
 	if err := tmpl.Execute(w, data); err != nil {
 		log.Printf("[ERROR] Dashboard template execution failed: %v", err)
 		http.Error(w, "Template rendering error", http.StatusInternalServerError)
