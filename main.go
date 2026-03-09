@@ -824,9 +824,7 @@ var dashboardHTML = `
             {{end}}
             {{end}}
         </table>
-    </div>
 
-    <div class="section">
         <h2>🇨🇳 中国电力枢纽标的</h2>
         <table>
             <tr><th>标的</th><th>标签</th><th>最新价</th><th>Market Price</th><th>收益率</th><th>换手率</th><th>vs DXY</th><th>vs 沪深300</th><th>新闻评分</th><th>状态</th></tr>
