@@ -727,8 +727,8 @@ var dashboardHTML = `
         <div>{{.TacticalAdvice}}</div>
     </div>
     <div class="micro-status-bar" id="micro-status-bar" style="display: none;">
-        <span class="micro-indicator {{if eq .GeoRiskLevel "green"}}micro-green{{else if eq .GeoRiskLevel "yellow"}}micro-yellow{{else}}micro-red{{end}}"></span>
-        <span class="micro-text">{{.GeoRiskLevel}} | {{len .Assets}} assets monitored</span>
+        <span class="micro-indicator {{if eq .GeopoliticalRisk "Green"}}micro-green{{else if eq .GeopoliticalRisk "Yellow"}}micro-yellow{{else}}micro-red{{end}}"></span>
+        <span class="micro-text">{{.GeopoliticalRisk}} | {{len .Assets}} assets monitored</span>
     </div>
     {{end}}
 
