@@ -666,6 +666,102 @@ var dashboardHTML = `
         .micro-red { background: #dc3545; animation: blink 1s infinite; }
         .news-badge { display: inline-block; background: #ff4757; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-left: 5px; }
         .impact-high { background: #ff4757; }
+        
+        /* KB Detail Content Styles - Improved Typography */
+        .kb-detail-content { 
+            font-family: Georgia, 'Times New Roman', serif !important;
+            line-height: 1.8 !important;
+            font-size: 15px !important;
+            color: #ddd !important;
+        }
+        .kb-detail-content h1, .kb-detail-content h2, .kb-detail-content h3, 
+        .kb-detail-content h4, .kb-detail-content h5, .kb-detail-content h6 {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+            color: #00d4ff !important;
+            margin-top: 24px !important;
+            margin-bottom: 12px !important;
+            font-weight: 600 !important;
+        }
+        .kb-detail-content h1 { font-size: 24px !important; border-bottom: 2px solid #00d4ff !important; padding-bottom: 8px !important; }
+        .kb-detail-content h2 { font-size: 20px !important; }
+        .kb-detail-content h3 { font-size: 18px !important; }
+        .kb-detail-content p {
+            margin-bottom: 16px !important;
+            text-align: justify !important;
+        }
+        .kb-detail-content ul, .kb-detail-content ol {
+            margin-bottom: 16px !important;
+            padding-left: 24px !important;
+        }
+        .kb-detail-content li {
+            margin-bottom: 8px !important;
+        }
+        .kb-detail-content code {
+            font-family: 'Monaco', 'Menlo', 'Consolas', monospace !important;
+            background: rgba(0, 212, 255, 0.1) !important;
+            padding: 2px 6px !important;
+            border-radius: 3px !important;
+            font-size: 13px !important;
+            color: #00d4ff !important;
+        }
+        .kb-detail-content pre {
+            background: #0f0f1e !important;
+            padding: 16px !important;
+            border-radius: 8px !important;
+            overflow-x: auto !important;
+            margin: 16px 0 !important;
+            border: 1px solid #333 !important;
+        }
+        .kb-detail-content pre code {
+            background: none !important;
+            padding: 0 !important;
+            color: #ccc !important;
+        }
+        .kb-detail-content blockquote {
+            border-left: 4px solid #667eea !important;
+            margin: 16px 0 !important;
+            padding: 8px 16px !important;
+            background: rgba(102, 126, 234, 0.1) !important;
+            font-style: italic !important;
+        }
+        .kb-detail-content a {
+            color: #00d4ff !important;
+            text-decoration: none !important;
+            border-bottom: 1px dotted #00d4ff !important;
+        }
+        .kb-detail-content a:hover {
+            border-bottom: 1px solid #00d4ff !important;
+        }
+        .kb-detail-content table {
+            width: 100% !important;
+            border-collapse: collapse !important;
+            margin: 16px 0 !important;
+        }
+        .kb-detail-content th, .kb-detail-content td {
+            padding: 10px !important;
+            border: 1px solid #444 !important;
+            text-align: left !important;
+        }
+        .kb-detail-content th {
+            background: #16213e !important;
+            color: #00d4ff !important;
+            font-weight: bold !important;
+        }
+        .kb-detail-content img {
+            max-width: 100% !important;
+            height: auto !important;
+            border-radius: 8px !important;
+            margin: 16px 0 !important;
+        }
+        
+        /* Core Tag Highlighting */
+        .tag-item.core-tag {
+            font-weight: bold !important;
+            box-shadow: 0 0 10px rgba(0, 212, 255, 0.4) !important;
+        }
+        .tag-item.core-tag:hover {
+            box-shadow: 0 0 15px rgba(0, 212, 255, 0.6) !important;
+        }
     </style>
     <script>
         function syncNow() {
@@ -906,7 +1002,7 @@ var dashboardHTML = `
             <h3 id="sidebar-title" style="color: #00d4ff; margin: 0; font-size: 18px;"></h3>
             <button onclick="closeSidebar()" style="background: none; border: none; color: #888; font-size: 24px; cursor: pointer;">✕</button>
         </div>
-        <div id="sidebar-content" style="padding: 20px; color: #ccc; line-height: 1.8;">
+        <div id="sidebar-content" class="kb-detail-content" style="padding: 20px; color: #ccc; line-height: 1.6; font-family: Georgia, 'Times New Roman', serif; font-size: 15px;">
             <p>加载中...</p>
         </div>
         <div style="padding: 20px; border-top: 1px solid #333; background: #16213e;">
@@ -977,15 +1073,53 @@ var dashboardHTML = `
             });
         }
 
+        // IronCore core keywords for highlighting
+        const CORE_KEYWORDS = ['transformer', 'vix', 'fed', 'hormuz', 'strait', 'sanctions', 
+                               'embargo', 'ga2o3', 'gallium', 'power-grid', 'inflation', 
+                               'recession', 'grid', 'ai-agent', 'open-source'];
+        
+        let tagCloudExpanded = false;
+        const TAG_CLOUD_LIMIT = 20;
+        
         function loadKBData() {
             fetch('/api/kb/tags')
             .then(r => r.json())
             .then(tags => {
                 const container = document.getElementById('tag-cloud-container');
                 if (tags && tags.length > 0) {
-                    container.innerHTML = '<div class="tag-cloud" style="display: flex; flex-wrap: wrap; gap: 10px;">' +
-                        tags.map(t => '<span class="tag-item" data-tag="' + t.name + '" onclick="filterByTag(\'' + t.name + '\')" style="background: #2d3748; color: #e2e8f0; padding: 6px 14px; border-radius: 20px; cursor: pointer; transition: all 0.2s; font-size: 13px; border: 1px solid #4a5568;">' + t.name + '<span style="opacity: 0.7; margin-left: 5px; font-size: 11px;">' + t.count + '</span></span>').join('') +
-                        '</div>';
+                    // Sort by count descending (weight ordering)
+                    tags.sort((a, b) => b.count - a.count);
+                    
+                    // Filter: hide long-tail tags (count === 1) unless it's a core keyword
+                    const filteredTags = tags.filter(t => t.count > 1 || CORE_KEYWORDS.some(kw => 
+                        t.name.toLowerCase().includes(kw.toLowerCase())));
+                    
+                    // Smart fold: show top 20 by default
+                    const displayTags = tagCloudExpanded ? filteredTags : filteredTags.slice(0, TAG_CLOUD_LIMIT);
+                    const hasMore = filteredTags.length > TAG_CLOUD_LIMIT;
+                    
+                    let html = '<div class="tag-cloud" style="display: flex; flex-wrap: wrap; gap: 10px;">';
+                    html += displayTags.map(t => {
+                        // Highlight core keywords
+                        const isCore = CORE_KEYWORDS.some(kw => t.name.toLowerCase().includes(kw.toLowerCase()));
+                        const bgColor = isCore ? '#00d4ff' : '#2d3748';
+                        const textColor = isCore ? '#1a1a2e' : '#e2e8f0';
+                        const borderColor = isCore ? '#00d4ff' : '#4a5568';
+                        const fontWeight = isCore ? 'bold' : 'normal';
+                        
+                        return '<span class="tag-item' + (isCore ? ' core-tag' : '') + '" data-tag="' + t.name + '" onclick="filterByTag(\'' + t.name + '\')" style="background: ' + bgColor + '; color: ' + textColor + '; padding: 6px 14px; border-radius: 20px; cursor: pointer; transition: all 0.2s; font-size: 13px; border: 1px solid ' + borderColor + '; font-weight: ' + fontWeight + ';">' + t.name + '<span style="opacity: 0.7; margin-left: 5px; font-size: 11px;">' + t.count + '</span></span>';
+                    }).join('');
+                    html += '</div>';
+                    
+                    // Add expand/collapse button if there are more tags
+                    if (hasMore) {
+                        html += '<div style="margin-top: 15px; text-align: center;">' +
+                            '<button onclick="toggleTagCloud()" class="sync-btn" style="padding: 8px 20px; font-size: 12px;">' +
+                            (tagCloudExpanded ? '收起标签 ▲' : '展开更多 (' + (filteredTags.length - TAG_CLOUD_LIMIT) + ') ▼') +
+                            '</button></div>';
+                    }
+                    
+                    container.innerHTML = html;
                 } else {
                     container.innerHTML = '<p style="color: #888;">暂无标签</p>';
                 }
@@ -993,6 +1127,11 @@ var dashboardHTML = `
             .catch(err => { console.error('Failed to load tags:', err); });
             
             loadKBItems();
+        }
+        
+        function toggleTagCloud() {
+            tagCloudExpanded = !tagCloudExpanded;
+            loadKBData();
         }
 
         function loadKBItems(tag) {
@@ -1094,10 +1233,41 @@ var dashboardHTML = `
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(html, 'text/html');
                 const title = doc.querySelector('h1, h2') ? doc.querySelector('h1, h2').textContent : '详情';
-                const bodyContent = doc.body ? doc.body.innerHTML : html;
+                
+                // Extract content with improved parsing
+                let contentDiv = doc.querySelector('.content');
+                let bodyContent = '';
+                
+                if (contentDiv) {
+                    bodyContent = contentDiv.innerHTML;
+                } else {
+                    // Fallback: extract from body, removing header/footer
+                    const body = doc.body;
+                    if (body) {
+                        // Remove title, meta sections
+                        const metaSection = body.querySelector('.meta');
+                        const tldrSection = body.querySelector('.tldr');
+                        const footerSection = body.querySelector('.footer');
+                        
+                        if (metaSection) metaSection.remove();
+                        if (tldrSection) tldrSection.remove();
+                        if (footerSection) footerSection.remove();
+                        
+                        // Get remaining content
+                        bodyContent = body.innerHTML;
+                    } else {
+                        bodyContent = html;
+                    }
+                }
+                
+                // Sanitize and enhance content
+                bodyContent = sanitizeHtml(bodyContent);
+                
+                // Add markdown-rendered class for styling
+                bodyContent = '<div class="markdown-rendered">' + bodyContent + '</div>';
                 
                 document.getElementById('sidebar-title').textContent = title;
-                document.getElementById('sidebar-content').innerHTML = sanitizeHtml(bodyContent);
+                document.getElementById('sidebar-content').innerHTML = bodyContent;
             })
             .catch(err => {
                 document.getElementById('sidebar-content').innerHTML = '<p style="color: #ff6b6b;">加载失败: ' + escapeHtml(err.message) + '</p>';
@@ -1250,20 +1420,23 @@ var loginHTML = `
 <html>
 <head>
     <meta charset="utf-8">
-    <title>企业级分布式日志管理系统 v4.2</title>
+    <title>⚡ IronCore 2.0 - 登录</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@3.4.1/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        body { background: #f5f5f5; padding-top: 80px; }
-        .login-container { max-width: 400px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .login-title { text-align: center; color: #333; margin-bottom: 30px; }
-        .alert-info { background: #d9edf7; border-color: #bce8f1; color: #31708f; font-size: 12px; }
-        .footer { text-align: center; margin-top: 20px; color: #999; font-size: 11px; }
+        body { background: #1a1a2e; padding-top: 80px; }
+        .login-container { max-width: 400px; margin: 0 auto; background: #16213e; padding: 30px; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); border: 1px solid #333; }
+        .login-title { text-align: center; color: #00d4ff; margin-bottom: 30px; font-weight: bold; }
+        .alert-info { background: #0f3460; border-color: #00d4ff; color: #00d4ff; font-size: 12px; }
+        .footer { text-align: center; margin-top: 20px; color: #666; font-size: 11px; }
+        .form-control { background: #0f0f1e; border: 1px solid #444; color: #eee; }
+        .form-control:focus { border-color: #00d4ff; box-shadow: 0 0 10px rgba(0,212,255,0.3); }
+        label { color: #ccc; }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="login-container">
-            <h3 class="login-title">企业级分布式日志管理系统 v4.2</h3>
+            <h3 class="login-title">⚡ IronCore 2.0</h3>
             <div class="alert alert-info">
                 <strong>⚠️ 安全警示：</strong>本系统仅限授权人员访问，所有操作将自动记录 IP 地址及操作时间。
             </div>
@@ -1373,7 +1546,7 @@ func main() {
 		kbShareHandler.RegisterRoutes(http.DefaultServeMux)
 	}
 
-	http.HandleFunc("/", authMiddleware(handleDashboard))
+	// API routes must be registered BEFORE the catch-all "/" route
 	http.HandleFunc("/api/status", authMiddleware(handleAPIStatus))
 	http.HandleFunc("/api/audit", authMiddleware(handleTriggerAudit))
 	http.HandleFunc("/api/reload-config", authMiddleware(handleReloadConfig))
@@ -1425,6 +1598,9 @@ func main() {
 			}
 		}))
 	}
+
+	// Catch-all route for dashboard - must be registered LAST
+	http.HandleFunc("/", authMiddleware(handleDashboard))
 
 	addr := ":" + httpPort
 	log.Printf("🚀 IronCore 服务启动: http://localhost%s", addr)

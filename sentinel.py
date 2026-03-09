@@ -584,15 +584,30 @@ class KBIngestProcessor:
         if len(content) > max_length:
             content = content[:max_length] + "..."
         
+        # Get IronCore core elements for tag reference
+        config_manager = ConfigManager()
+        sentinel_keywords = config_manager.get_sentinel_keywords()
+        core_elements = []
+        for category, keywords in sentinel_keywords.items():
+            core_elements.extend(keywords)
+        core_elements_str = ", ".join(core_elements) if core_elements else "Hormuz, Strait, Sanctions, Embargo, Ga2O3, Transformer Shortage, Power Grid, Fed Rate, Inflation"
+        
         prompt = f"""Analyze this content and extract structured information for a knowledge base.
 
 Content:
 {content}
 
+[STRICT TAGGING RULES - MANDATORY COMPLIANCE]
+1. "Strict Multi-word Term Bond": Multi-word terms MUST use hyphens (e.g., "open-source", "ai-agent", "transformer-shortage")
+2. NEVER split proper nouns or compound terms (e.g., use "Transformer-Shortage", NOT "transformer" + "shortage")
+3. PRIORITY: Select tags primarily from IronCore Core Elements: [{core_elements_str}]
+4. LIMIT: Generate EXACTLY 3-5 tags, no more, no less
+5. QUALITY: Each tag must be specific, relevant, and infrastructure/energy/investment focused
+
 Please return a JSON object with the following fields:
 {{
     "title": "A concise, descriptive title (max 100 chars)",
-    "tags": ["relevant", "tags", "based", "on", "content", "3-5", "tags"],
+    "tags": ["tag-1", "tag-2", "tag-3"],
     "tldr": "A 1-2 sentence summary of the key points (max 200 chars)",
     "impact_score": 0.75  // A score from 0.0 to 1.0 indicating relevance to infrastructure/energy/investment themes
 }}

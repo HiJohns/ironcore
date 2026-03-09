@@ -25,3 +25,12 @@
 - **Sidebar 详情面板**: 实现右侧滑出式详情面板，通过 fetch('/share/:id') 加载内容并使用 DOMParser 解析提取标题和正文，集成 sanitizeHtml() XSS 防护，提供"生成外部链接"按钮复制 /share/:id 链接到剪贴板。
 - **全局搜索功能**: 实现 SearchKBItems() 支持标题、内容、TLDR、标签多字段模糊搜索，修复时间解析错误显式处理、N+1 查询改为批量预加载、strconv.Atoi 参数错误日志记录，前端实现 performSearch() 实时搜索和 renderSearchResults() 结果渲染。
 
+
+### Raw Entry
+
+- **SVG Favicon 设计**: 为 report-v2 项目创建全新的 SVG 格式 Favicon，采用深蓝到亮青的对角线渐变，白色"R"字母配合向上趋势线的品牌标识。
+- **Gemini Prompt 打标升级**: 新增 "Strict Multi-word Term Bond" 约束规则，强制多词术语使用连字符（如 open-source），禁止拆分专有名词，优先从 IronCore 核心观察名单选择标签，限制 3-5 个标签。
+- **标签清洗脚本**: 实现标签聚合与清洗功能，支持合并同义词（ai-agent/aiagent/agent → ai-agent）、修复断词（open + source → open-source）、过滤低频标签（count<2 且非监控关键词），保护核心关键词不被删除。
+- **标签云 UI 优化**: 实现智能折叠（默认显示前20个标签，展开更多按钮）、权重排序（按关联文章数量降序）、核心关键词高亮（Transformer/VIX/Fed 等使用青色加粗显示）、长尾噪音过滤（隐藏 count=1 的非核心标签）。
+- **详情页排版优化**: Sidebar 详情面板使用 Georgia 衬线字体、1.8 行高提升阅读体验，添加代码块、引用、表格、图片等 Markdown 元素的样式支持，登录页面 UI 风格统一为深色主题。
+

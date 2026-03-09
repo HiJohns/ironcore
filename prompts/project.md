@@ -1,12 +1,8 @@
 [TODO]
 
-- [Frontend] 为 report-v2 项目设计并替换全新的 SVG 格式 Favicon
-  - 创建文件：frontend/public/favicon.svg
-  - 图形设计：viewBox="0 0 100 100"，微圆角六边形背景，深蓝(#1E3A8A)到亮青(#06B6D4)渐变
-  - 核心符号：白色 "R" + 向上折线组合，stroke-width 6-8
-  - 更新 HTML：frontend/index.html 引入 `<link rel="icon" type="image/svg+xml" href="/favicon.svg" />`
-
 [WIP]
+
+[READY]
 
 [READY]
 
@@ -139,6 +135,42 @@
 [READY]
 
 [DONE]
+
+### [2026-03-09] Favicon、Gemini Prompt、标签清洗、标签云 UI 优化
+**Status**: ✅ 已完成并通过代码审查
+**Patches**: review_Task1_SVG_Favicon.patch, review_Task2_Gemini_Prompt_Upgrade.patch, review_Task3_Tag_Cleanup_Script.patch, review_Task4_5_6_7_MainGo_Updates.patch
+
+**核心变更：**
+1. **SVG Favicon 设计**
+   - 为 report-v2 项目创建全新 SVG 格式 Favicon
+   - 深蓝到亮青对角线渐变背景
+   - 白色"R"字母配合向上趋势线品牌标识
+
+2. **Gemini Prompt 打标升级**
+   - 新增 "Strict Multi-word Term Bond" 约束规则
+   - 强制多词术语使用连字符（open-source, ai-agent）
+   - 禁止拆分专有名词
+   - 优先从 IronCore 核心观察名单选择标签
+   - 限制 3-5 个标签
+
+3. **标签清洗脚本**
+   - 实现标签聚合与清洗功能
+   - 合并同义词（ai-agent/aiagent/agent → ai-agent）
+   - 修复断词（open + source → open-source）
+   - 过滤低频标签（count<2 且非监控关键词）
+   - 保护核心关键词不被删除
+
+4. **标签云 UI 优化**
+   - 智能折叠：默认显示前20个标签
+   - 权重排序：按关联文章数量降序
+   - 核心关键词高亮：Transformer/VIX/Fed 等使用青色加粗
+   - 长尾噪音过滤：隐藏 count=1 的非核心标签
+
+5. **详情页排版优化**
+   - Sidebar 详情面板使用 Georgia 衬线字体
+   - 1.8 行高提升阅读体验
+   - 添加代码块、引用、表格、图片等 Markdown 元素样式
+   - 登录页面 UI 风格统一为深色主题
 
 ### [2026-03-09] KB Dashboard 渲染、Sidebar、全局搜索功能
 **Status**: ✅ 已完成并通过代码审查
