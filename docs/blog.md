@@ -16,4 +16,5 @@
 - **时区统一准入修复**: 废弃冗余的 isSilentPeriod() 函数，统一使用 isMarketOpen(asset) 按资产判断市场状态，确保美股标的在北京时间周一中午（美股周日休市）不被错误处理。
 - **数据库连接修复**: 修复 DashboardData 接口重复创建数据库连接的问题，新增 NewDBFromConn() 和 NewDashboardHandlerFromDB() 函数，实现全局 DB 实例复用，避免连接泄漏。
 - **异步清理机制**: 为 kb_handler.go 的 jobStore 添加 TTL(24小时) 过期逻辑和每小时后台清理协程，使用 sync.Once 确保协程只启动一次，防止内存泄漏。
+- **UI 重构与简化**: 删除冗余 internal/kb/dashboard.go (415行)，将活跃 UI 逻辑收拢至 main.go 内嵌模板；实现刷新状态持久化(Cookie active_tab)，后端根据 Cookie 值切换初始 Tab 显示；简化预览逻辑，移除 iframe 直接使用 div 渲染，添加 sanitizeHtml() XSS 防护函数，使用 {{js .Name}} 模板转义防止注入。
 

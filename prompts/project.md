@@ -1,5 +1,16 @@
 [TODO]
 
+[READY]
+
+[TODO]
+
+### 16. 统一时区准入 (Timezone Unification)
+
+### 20. 刷新状态持久化 (Refresh State Persistence)
+- 在 handleDashboard (main.go:1986) 中，增加对 Cookie active_tab 的读取
+- 修改后端渲染逻辑：若 Cookie 值为 kb，则初始 HTML 中 assets-tab 设为 display:none，kb-tab 设为 display:block
+- 状态：✅ 已完成
+
 ### 16. 统一时区准入 (Timezone Unification)
 - 废弃冗余的 isSilentPeriod() 函数
 - 强制所有审计入口（包括邮件发送逻辑）调用 isMarketOpen(asset)
@@ -120,6 +131,26 @@
 [READY]
 
 [DONE]
+
+### [2026-03-09] UI 重构与简化 (删除 dashboard.go, Cookie 状态持久化, 预览逻辑简化)
+**Status**: ✅ 已完成并通过代码审查
+**Patches**: review_UI_Refactoring.patch
+
+**核心变更：**
+1. **清理冗余文件 (Cleanup Redundant Files)**
+   - 删除未被引用的 internal/kb/dashboard.go (415行)
+   - 将活跃 UI 逻辑收拢至 main.go 内嵌模板
+
+2. **刷新状态持久化 (Refresh State Persistence)**
+   - 新增 DashboardData 结构体包装 AuditStatus 和 ActiveTab
+   - handleDashboard 读取 Cookie active_tab，验证值仅为 "assets" 或 "kb"
+   - 后端模板条件渲染根据 ActiveTab 切换初始 Tab 显示
+
+3. **预览逻辑简化 (Preview Logic Simplification)**
+   - 移除预览 Modal 中的 iframe，直接使用 div 渲染
+   - 新增 sanitizeHtml() 函数净化 HTML 内容，防止 XSS 攻击
+   - 使用 {{js .Name}} 模板函数进行 JavaScript 上下文转义
+   - 两处模板执行添加错误处理和日志记录
 
 ### [2026-03-09] 时区统一、数据库连接修复、异步清理机制
 **Status**: ✅ 已完成并通过代码审查

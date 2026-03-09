@@ -350,6 +350,12 @@ type AuditStatus struct {
 	MarketStatuses      []MarketStatusInfo `json:"market_statuses"` // 按市场分流的交易状态
 }
 
+// DashboardData wraps AuditStatus with UI state
+type DashboardData struct {
+	AuditStatus
+	ActiveTab string
+}
+
 var (
 	globalStatus  AuditStatus
 	statusMutex   sync.RWMutex // Protects globalStatus access
@@ -797,7 +803,7 @@ var dashboardHTML = `
         });
     </script>
 
-    <div id="assets-tab" class="section">
+    <div id="assets-tab" class="section"{{if ne .ActiveTab "assets"}} style="display: none;"{{end}}>
         <h2>📊 全球宏观标的</h2>
         <table>
             <tr><th>标的</th><th>标签</th><th>最新价</th><th>Market Price</th><th>收益率</th><th>6月相关</th><th>30日相关</th><th>3-Sigma</th><th>新闻评分</th><th>状态</th></tr>
@@ -844,7 +850,7 @@ var dashboardHTML = `
     </div>
 
     <!-- Knowledge Base Tab -->
-    <div id="kb-tab" class="section" style="display: none;">
+    <div id="kb-tab" class="section"{{if ne .ActiveTab "kb"}} style="display: none;"{{end}}>
         <h2>📚 知识库 (Knowledge Base)</h2>
         
         <div class="kb-ingest-box" style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); padding: 20px; border-radius: 10px; margin-bottom: 30px; border: 1px solid #333;">
@@ -985,6 +991,16 @@ var dashboardHTML = `
             .catch(err => { console.error('Failed to load items:', err); });
         }
 
+        // Sanitize HTML content to prevent XSS attacks
+        function sanitizeHtml(html) {
+            const temp = document.createElement('div');
+            temp.textContent = html;
+            // Basic XSS protection: remove script tags and event handlers
+            return temp.innerHTML
+                .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+                .replace(/\son\w+\s*=\s*["'][^"']*["']/gi, '');
+        }
+
         function openPreviewModal(itemId, title) {
             document.getElementById('preview-title').textContent = title || '预览';
             document.getElementById('preview-content').innerHTML = '<p>加载中...</p>';
@@ -994,20 +1010,16 @@ var dashboardHTML = `
             fetch('/share/' + encodeURIComponent(itemId))
             .then(r => r.text())
             .then(html => {
-                // Use iframe for safe content isolation
-                const iframe = document.createElement('iframe');
-                iframe.style.cssText = 'width: 100%; height: 70vh; border: none; background: #1a1a2e;';
-                iframe.sandbox = 'allow-same-origin';
-                const contentDiv = document.getElementById('preview-content');
-                contentDiv.innerHTML = '';
-                contentDiv.appendChild(iframe);
-                
-                // Write sanitized content to iframe
+                // Extract body content from HTML
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(html, 'text/html');
-                const bodyContent = doc.body ? doc.body.innerHTML : html;
+                let bodyContent = doc.body ? doc.body.innerHTML : html;
                 
-                iframe.srcdoc = '<!DOCTYPE html><html><head><style>body{background:#1a1a2e;color:#ccc;padding:20px;font-family:system-ui;line-height:1.6}a{color:#00d4ff}img{max-width:100%}pre{background:#0f0f1e;padding:10px;border-radius:4px;overflow-x:auto}</style></head><body>' + bodyContent + '</body></html>';
+                // Sanitize content before rendering to prevent XSS
+                bodyContent = sanitizeHtml(bodyContent);
+                
+                // Render sanitized content to div
+                document.getElementById('preview-content').innerHTML = bodyContent;
             })
             .catch(err => {
                 document.getElementById('preview-content').innerHTML = '<p style="color: #ff6b6b;">加载失败: ' + escapeHtml(err.message) + '</p>';
@@ -1059,6 +1071,22 @@ var dashboardHTML = `
     </script>
 </body>
 </html>`
+
+// kbDataTemplate is the template for KB data AJAX response
+// Uses Go's html/template for automatic HTML escaping to prevent XSS
+const kbDataTemplate = "{{range .Tags}}" +
+	"<span class=\"tag-item\" data-tag=\"{{.Name}}\" onclick=\"filterByTag('{{js .Name}}')\">" +
+	"{{.Name}}<span class=\"tag-count\">{{.Count}}</span></span>" +
+	"{{else}}<p style=\"color: #888;\">暂无标签</p>{{end}}" +
+	"<div class=\"kb-items-container\">" +
+	"{{range .Items}}" +
+	"<div class=\"kb-item\"><div class=\"kb-item-title\">{{.Title}}" +
+	"<a href=\"/share/{{.ID}}\" class=\"kb-share-link\" target=\"_blank\">🔗 分享</a></div>" +
+	"<div class=\"kb-item-meta\"><span>影响分: <span class=\"kb-impact\">{{printf \"%.2f\" .ImpactScore}}</span></span>" +
+	"<span>{{.CreatedAt.Format \"2006-01-02 15:04:05\"}}</span>" +
+	"{{if .Tags}}<div class=\"kb-item-tags\">{{range .Tags}}<span class=\"kb-item-tag\">{{.}}</span>{{end}}</div>{{end}}</div>" +
+	"{{if .TLDR}}<div class=\"kb-item-tldr\">{{.TLDR}}</div>{{end}}</div>" +
+	"{{else}}<p style=\"color: #888;\">暂无知识条目</p>{{end}}</div>"
 
 var loginHTML = `
 <!DOCTYPE html>
@@ -1202,8 +1230,42 @@ func main() {
 				return
 			}
 			kbDB := kb.NewDBFromConn(db)
-			dh := kb.NewDashboardHandlerFromDB(kbDB)
-			dh.HandleKnowledgeBaseData(w, r)
+
+			// Get tags for cloud
+			tags, err := kbDB.GetAllTags()
+			if err != nil {
+				http.Error(w, "Failed to load tags", http.StatusInternalServerError)
+				return
+			}
+
+			// Get recent items
+			items, err := kbDB.ListKBItems(nil, 10, 0)
+			if err != nil {
+				http.Error(w, "Failed to load items", http.StatusInternalServerError)
+				return
+			}
+
+			// Build HTML response
+			data := struct {
+				Tags  []kb.TagCloudItem
+				Items []kb.KBItem
+			}{
+				Tags:  tags,
+				Items: items.Items,
+			}
+
+			tmpl, err := template.New("kb-data").Parse(kbDataTemplate)
+			if err != nil {
+				http.Error(w, "Template error", http.StatusInternalServerError)
+				return
+			}
+
+			w.Header().Set("Content-Type", "text/html")
+			if err := tmpl.Execute(w, data); err != nil {
+				log.Printf("[ERROR] KB data template execution failed: %v", err)
+				http.Error(w, "Template rendering error", http.StatusInternalServerError)
+				return
+			}
 		}))
 	}
 
@@ -1970,7 +2032,24 @@ func handleDashboard(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	tmpl.Execute(w, globalStatus)
+
+	// Read active_tab cookie to persist tab state across refreshes
+	activeTab := "assets" // default
+	if cookie, err := r.Cookie("active_tab"); err == nil {
+		// Validate cookie value (only allow "assets" or "kb")
+		if cookie.Value == "assets" || cookie.Value == "kb" {
+			activeTab = cookie.Value
+		}
+	}
+
+	data := DashboardData{
+		AuditStatus: globalStatus,
+		ActiveTab:   activeTab,
+	}
+	if err := tmpl.Execute(w, data); err != nil {
+		log.Printf("[ERROR] Dashboard template execution failed: %v", err)
+		http.Error(w, "Template rendering error", http.StatusInternalServerError)
+	}
 }
 
 func handleAPIStatus(w http.ResponseWriter, r *http.Request) {
