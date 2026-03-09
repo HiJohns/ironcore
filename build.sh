@@ -11,12 +11,27 @@ REMOTE_PATH="~/finance"
 PLOTTER_NAME="plotter.py"
 COLLECTOR_NAME="collector.py"
 
-SMTP_USER="${SMTP_USER:-linwx1978@qq.com}"
-SMTP_PASS="${smtpPass:-}"
+# 敏感配置：从编译机器的环境变量读取（不存储在服务器上）
+# 编译前请在本地设置: export ADMIN_PASS=xxx export SESSION_SECRET=xxx etc.
+SMTP_USER="${SMTP_USER:-}"
+SMTP_PASS="${SMTP_PASS:-}"
+ADMIN_USER="${ADMIN_USER:-admin}"
+ADMIN_PASS="${ADMIN_PASS:-}"
+SESSION_SECRET="${SESSION_SECRET:-}"
 RECEIVER="${RECEIVER:-linwx1978@gmail.com}"
-ADMIN_USER="${adminUser:-admin}"
-ADMIN_PASS="${adminPass:-}"
-SESSION_SECRET="${sessionSecret:-}"
+
+# 检查敏感环境变量是否已设置
+MISSING_VARS=()
+[ -z "$SMTP_USER" ] && MISSING_VARS+=("SMTP_USER")
+[ -z "$SMTP_PASS" ] && MISSING_VARS+=("SMTP_PASS")
+[ -z "$ADMIN_PASS" ] && MISSING_VARS+=("ADMIN_PASS")
+[ -z "$SESSION_SECRET" ] && MISSING_VARS+=("SESSION_SECRET")
+
+if [ ${#MISSING_VARS[@]} -ne 0 ]; then
+    echo "⚠️  Warning: 以下环境变量未设置，将使用空值编译: ${MISSING_VARS[*]}"
+    echo "   如需设置，请在编译前执行:"
+    echo "   export SMTP_USER=xxx SMTP_PASS=xxx ADMIN_PASS=xxx SESSION_SECRET=xxx"
+fi
 
 GIT_VERSION=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 LD_FLAGS="-X main.smtpUser=${SMTP_USER} -X main.smtpPass=${SMTP_PASS} -X main.receiver=${RECEIVER} -X main.AdminUser=${ADMIN_USER} -X main.AdminPass=${ADMIN_PASS} -X main.SessionSecret=${SESSION_SECRET} -X main.version=${GIT_VERSION}"
