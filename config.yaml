@@ -8,60 +8,73 @@ assets:
       name: "全球数据中心REIT"
       source: "yahoo"
       tags: ["US-Compute"]
+      market_timezone: "America/New_York"
     - symbol: "SLV"
       name: "白银ETF"
       source: "yahoo"
+      market_timezone: "America/New_York"
     - symbol: "USO"
       name: "原油ETF"
       source: "yahoo"
+      market_timezone: "America/New_York"
     - symbol: "GLD"
       name: "黄金ETF"
       source: "yahoo"
+      market_timezone: "America/New_York"
       sensitivity_multiplier: 1.5  # 地缘政治敏感资产
     - symbol: "IWY"
       name: "纳斯达克科技ETF"
       source: "yahoo"
+      market_timezone: "America/New_York"
     - symbol: "DX-Y.NYB"
       name: "美元指数"
       source: "yahoo"
       is_benchmark: true
+      market_timezone: "America/New_York"
     - symbol: "^VIX"
       name: "波动率指数"
       source: "yahoo"
       is_sentiment_indicator: true
+      market_timezone: "America/New_York"
 
   # 中国电力枢纽标的 (efinance)
-        # 中国电力枢纽标的 (efinance)
   china_power_grid:
     - symbol: "600406.SS"
       name: "国电南瑞"
       source: "efinance"
       tags: ["Grid-Brain"]
+      market_timezone: "Asia/Shanghai"
     - symbol: "002028.SZ"
       name: "思源电气"
       source: "efinance"
       tags: ["Grid-Hard"]
+      market_timezone: "Asia/Shanghai"
     - symbol: "002270.SZ"
       name: "华明装备"
       source: "efinance"
       tags: ["Grid-Hard"]
+      market_timezone: "Asia/Shanghai"
     - symbol: "688676.SS"
       name: "金盘科技"
       source: "efinance"
       tags: ["AIDC-Leader"]
+      market_timezone: "Asia/Shanghai"
     - symbol: "600089.SS"
       name: "特变电工"
       source: "efinance"
-      tags: ["Grid-Hard", "Heavy-Duty"]  # 输变电重型装备 + 能源资源
+      tags: ["Grid-Hard", "Heavy-Duty"]
+      market_timezone: "Asia/Shanghai"
     - symbol: "600875.SS"
       name: "东方电气"
       source: "efinance"
-      tags: ["Energy-Source", "Heavy-Duty"] # 全球发电设备龙头 + 核氢溢价
+      tags: ["Energy-Source", "Heavy-Duty"]
+      market_timezone: "Asia/Shanghai"
     - symbol: "159326.SZ"
       name: "电网设备ETF"
       source: "efinance"
       tags: ["Sector-Beta"]
-      auction_monitor: true  # 竞价监控标的
+      auction_monitor: true
+      market_timezone: "Asia/Shanghai"
 
   # 市场基准
   benchmarks:

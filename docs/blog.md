@@ -21,4 +21,5 @@
 
 - **KB Dashboard 交互优化**: 实现 Tab 状态持久化(localStorage)、顶部栏 UI 降级(Micro-Status-Bar)、最近列表 API(/api/kb/recent, /api/kb/list)、预览模态框、标签云点击交互。
 - **安全加固**: 修复 kb_handler 输入验证(fmt.Sscanf→strconv.Atoi, limit≤100)、错误信息泄露(改为日志记录)、XSS 防护(data-*属性+事件委托)、DOM Clobbering 防护(iframe sandbox 隔离)、tag 参数正则验证。
+- **市场时区审计系统**: 实现按资产时区的智能审计调度，支持美股(America/New_York)和A股(Asia/Shanghai)交易时段检测，休市期间自动跳过3-Sigma审计和竞价审计，Dashboard显示分市场状态(🇺🇸/🇨🇳)。
 

@@ -104,6 +104,7 @@ type AssetConfig struct {
 	IsSentimentIndicator  bool     `yaml:"is_sentiment_indicator,omitempty"`
 	SensitivityMultiplier float64  `yaml:"sensitivity_multiplier,omitempty"`
 	AuctionMonitor        bool     `yaml:"auction_monitor,omitempty"`
+	MarketTimezone        string   `yaml:"market_timezone,omitempty"`
 }
 
 var (
@@ -324,6 +325,14 @@ type ResonanceStatus struct {
 	Message         string  `json:"message"`
 }
 
+// MarketStatusInfo represents the trading status of a market
+type MarketStatusInfo struct {
+	Name       string `json:"name"`
+	Timezone   string `json:"timezone"`
+	IsOpen     bool   `json:"is_open"`
+	StatusText string `json:"status_text"`
+}
+
 type AuditStatus struct {
 	Timestamp           time.Time          `json:"timestamp"`
 	Assets              []AssetStatus      `json:"assets"`
@@ -338,6 +347,7 @@ type AuditStatus struct {
 	CapitalAlertMessage string             `json:"capital_alert_message"`
 	CapitalAlertTime    time.Time          `json:"capital_alert_time"`
 	TacticalAdvice      string             `json:"tactical_advice"`
+	MarketStatuses      []MarketStatusInfo `json:"market_statuses"` // 按市场分流的交易状态
 }
 
 var (
@@ -689,7 +699,8 @@ var dashboardHTML = `
     </div>
     {{else}}
     <div class="status-bar {{if .SilentPeriod}}warning{{else}}normal{{end}}">
-        <strong>状态:</strong> {{if .SilentPeriod}}🔇 静默期 (周末/闭市){{else}}🟢 监控中{{end}} | 
+        <strong>市场状态:</strong> 
+        {{range .MarketStatuses}}{{if .IsOpen}}<span style="color: #28a745;">{{.StatusText}}</span>{{else}}<span style="color: #dc3545;">{{.StatusText}}</span>{{end}} {{end}} |
         <strong>VIX-DXY相关:</strong> {{printf "%.4f" .VixDxyCorr}} {{if .VixWarning}}<span class="alert">⚠️ 共振预警</span>{{end}} |
         <span class="timestamp">更新: {{.Timestamp.Format "2006-01-02 15:04:05"}}</span>
     </div>
@@ -1222,11 +1233,16 @@ func runAuditLoop(baseTime time.Time) {
 func performAudit(endTime time.Time) {
 	log.Println("🔄 执行审计...")
 
-	// Check auction time and trigger alerts if needed
+	// Check auction time and trigger alerts if needed (only for open markets)
 	if isAuctionSnapshotTime() {
 		log.Println("📊 集合竞价时段，检查成交量...")
 		auctionAssets := globalConfig.GetAuctionMonitorAssets()
 		for _, asset := range auctionAssets {
+			// Only check auction for assets whose market is currently open
+			if !isMarketOpen(asset) {
+				log.Printf("⏸️  %s 市场休市，跳过竞价审计", asset.Symbol)
+				continue
+			}
 			isAnomaly, volume, ratio := checkAuctionVolumeAlert(asset)
 			if isAnomaly {
 				triggerCapitalAlert(asset, volume, ratio)
@@ -1312,14 +1328,22 @@ func performAudit(endTime time.Time) {
 
 	var assetStatuses []AssetStatus
 
-	// Process global assets
+	// Process global assets (only if market is open)
 	for _, asset := range globalAssets {
+		if !isMarketOpen(asset) {
+			log.Printf("⏸️  %s 市场休市，跳过 3-Sigma 审计", asset.Symbol)
+			continue
+		}
 		status := calculateAssetStatusWithConfig(asset, dxyMap, endTime, "global")
 		assetStatuses = append(assetStatuses, status)
 	}
 
-	// Process China power grid assets
+	// Process China power grid assets (only if market is open)
 	for _, asset := range chinaAssets {
+		if !isMarketOpen(asset) {
+			log.Printf("⏸️  %s 市场休市，跳过 3-Sigma 审计", asset.Symbol)
+			continue
+		}
 		status := calculateAssetStatusWithConfig(asset, dxyMap, endTime, "china")
 		if len(hs300Map) > 0 {
 			status.HS300Corr = calculateHS300Corr(asset.Symbol, hs300Map, endTime)
@@ -1341,6 +1365,9 @@ func performAudit(endTime time.Time) {
 	geoRisk := getGeopoliticalRiskLevel()
 	tacticalAdvice := generateTacticalAdvice(assetStatuses, resonance, geoRisk)
 
+	// Calculate market statuses for display
+	marketStatuses := calculateMarketStatuses(globalAssets, chinaAssets)
+
 	globalStatus = AuditStatus{
 		Timestamp:        time.Now(),
 		Assets:           assetStatuses,
@@ -1351,6 +1378,7 @@ func performAudit(endTime time.Time) {
 		Resonance:        resonance,
 		GeopoliticalRisk: geoRisk,
 		TacticalAdvice:   tacticalAdvice,
+		MarketStatuses:   marketStatuses,
 	}
 
 	checkAndSendAlert(vixWarning, assetStatuses)
@@ -1662,6 +1690,133 @@ func loadLocationSafe() *time.Location {
 		}
 	}
 	return loc
+}
+
+// isMarketOpen checks if a specific asset's market is currently open
+// Considers timezone, weekends, and trading hours
+func isMarketOpen(asset AssetConfig) bool {
+	// Use asset's configured timezone or fallback to Asia/Shanghai
+	tz := asset.MarketTimezone
+	if tz == "" {
+		tz = "Asia/Shanghai"
+	}
+
+	loc, err := time.LoadLocation(tz)
+	if err != nil {
+		log.Printf("[WARN] Failed to load timezone %s for asset %s, using UTC: %v", tz, asset.Symbol, err)
+		loc = time.UTC
+	}
+
+	now := time.Now().In(loc)
+	weekday := now.Weekday()
+	hour := now.Hour()
+
+	// Weekend check
+	if weekday == time.Saturday || weekday == time.Sunday {
+		return false
+	}
+
+	// Trading hours by market type
+	switch tz {
+	case "America/New_York":
+		// US markets: 09:30 - 16:00 ET
+		if hour < 9 || hour >= 16 {
+			return false
+		}
+		// Pre-market starts at 09:30, not 09:00
+		if hour == 9 && now.Minute() < 30 {
+			return false
+		}
+	case "Asia/Shanghai":
+		// China A-shares: 09:30 - 11:30, 13:00 - 15:00
+		if (hour == 9 && now.Minute() < 30) || (hour >= 11 && hour < 13) || hour >= 15 {
+			return false
+		}
+	default:
+		// Default: 09:00 - 15:00
+		if hour < 9 || hour >= 15 {
+			return false
+		}
+	}
+
+	return true
+}
+
+// calculateMarketStatuses calculates the trading status for each market category
+func calculateMarketStatuses(globalAssets, chinaAssets []AssetConfig) []MarketStatusInfo {
+	var statuses []MarketStatusInfo
+
+	// Check US market (global_macro)
+	if len(globalAssets) > 0 {
+		tz := globalAssets[0].MarketTimezone
+		if tz == "" {
+			tz = "America/New_York"
+		}
+		loc, err := time.LoadLocation(tz)
+		if err != nil {
+			log.Printf("[WARN] Failed to load timezone %s, using UTC: %v", tz, err)
+			loc = time.UTC
+		}
+		now := time.Now().In(loc)
+		weekday := now.Weekday()
+		isWeekend := weekday == time.Saturday || weekday == time.Sunday
+		hour := now.Hour()
+		minute := now.Minute()
+
+		status := MarketStatusInfo{
+			Name:     "美股",
+			Timezone: tz,
+		}
+
+		if isWeekend {
+			status.IsOpen = false
+			status.StatusText = "🇺🇸 静默期（周末）"
+		} else if hour >= 9 && (hour > 9 || minute >= 30) && hour < 16 {
+			status.IsOpen = true
+			status.StatusText = "🇺🇸 交易中"
+		} else {
+			status.IsOpen = false
+			status.StatusText = "🇺🇸 闭市"
+		}
+		statuses = append(statuses, status)
+	}
+
+	// Check China market (china_power_grid)
+	if len(chinaAssets) > 0 {
+		tz := chinaAssets[0].MarketTimezone
+		if tz == "" {
+			tz = "Asia/Shanghai"
+		}
+		loc, err := time.LoadLocation(tz)
+		if err != nil {
+			log.Printf("[WARN] Failed to load timezone %s, using UTC: %v", tz, err)
+			loc = time.UTC
+		}
+		now := time.Now().In(loc)
+		weekday := now.Weekday()
+		isWeekend := weekday == time.Saturday || weekday == time.Sunday
+		hour := now.Hour()
+		minute := now.Minute()
+
+		status := MarketStatusInfo{
+			Name:     "A股",
+			Timezone: tz,
+		}
+
+		if isWeekend {
+			status.IsOpen = false
+			status.StatusText = "🇨🇳 静默期（周末）"
+		} else if (hour == 9 && minute >= 30) || (hour == 10) || (hour == 11 && minute < 30) || (hour == 13) || (hour == 14) || (hour == 15 && minute == 0) {
+			status.IsOpen = true
+			status.StatusText = "🇨🇳 交易中"
+		} else {
+			status.IsOpen = false
+			status.StatusText = "🇨🇳 闭市"
+		}
+		statuses = append(statuses, status)
+	}
+
+	return statuses
 }
 
 func isSilentPeriod() bool {
