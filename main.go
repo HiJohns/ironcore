@@ -642,6 +642,11 @@ var dashboardHTML = `
         @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
         .tactical-advice { background: linear-gradient(135deg, #1e3c72, #2a5298); padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #00d4ff; }
         .advice-title { color: #00d4ff; font-weight: bold; margin-bottom: 8px; }
+        .micro-status-bar { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: #1a1a2e; border-radius: 4px; margin: 10px 0; font-size: 12px; color: #888; border: 1px solid #333; }
+        .micro-indicator { width: 8px; height: 8px; border-radius: 50%; }
+        .micro-green { background: #28a745; }
+        .micro-yellow { background: #ffc107; }
+        .micro-red { background: #dc3545; animation: blink 1s infinite; }
         .news-badge { display: inline-block; background: #ff4757; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-left: 5px; }
         .impact-high { background: #ff4757; }
     </style>
@@ -700,9 +705,13 @@ var dashboardHTML = `
     </div>
 
     {{if .TacticalAdvice}}
-    <div class="tactical-advice">
+    <div class="tactical-advice" id="tactical-advice-panel">
         <div class="advice-title">🎯 战术建议 (Tactical Advice)</div>
         <div>{{.TacticalAdvice}}</div>
+    </div>
+    <div class="micro-status-bar" id="micro-status-bar" style="display: none;">
+        <span class="micro-indicator {{if eq .GeoRiskLevel "green"}}micro-green{{else if eq .GeoRiskLevel "yellow"}}micro-yellow{{else}}micro-red{{end}}"></span>
+        <span class="micro-text">{{.GeoRiskLevel}} | {{len .Assets}} assets monitored</span>
     </div>
     {{end}}
 
@@ -732,6 +741,8 @@ var dashboardHTML = `
     </style>
 
     <script>
+        const ACTIVE_TAB_KEY = 'ironcore_active_tab';
+        
         function showTab(tabId) {
             // Hide all tabs
             document.querySelectorAll('.section').forEach(s => s.style.display = 'none');
@@ -740,9 +751,39 @@ var dashboardHTML = `
             // Update button states
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
             document.getElementById(tabId + '-btn').classList.add('active');
+            // Save to localStorage with error handling
+            try {
+                localStorage.setItem(ACTIVE_TAB_KEY, tabId);
+            } catch (e) {
+                console.warn('localStorage not available:', e);
+            }
+            // Toggle tactical advice panel visibility
+            const tacticalPanel = document.getElementById('tactical-advice-panel');
+            const microStatus = document.getElementById('micro-status-bar');
+            if (tacticalPanel && microStatus) {
+                if (tabId === 'kb-tab') {
+                    tacticalPanel.style.display = 'none';
+                    microStatus.style.display = 'flex';
+                } else {
+                    tacticalPanel.style.display = 'block';
+                    microStatus.style.display = 'none';
+                }
+            }
             // Load KB data if KB tab
             if (tabId === 'kb-tab') loadKBData();
         }
+        
+        // Restore active tab on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            try {
+                const savedTab = localStorage.getItem(ACTIVE_TAB_KEY);
+                if (savedTab && document.getElementById(savedTab)) {
+                    showTab(savedTab);
+                }
+            } catch (e) {
+                console.warn('localStorage not available:', e);
+            }
+        });
     </script>
 
     <div id="assets-tab" class="section">
@@ -816,6 +857,19 @@ var dashboardHTML = `
         </div>
     </div>
 
+    <!-- Preview Modal -->
+    <div id="kb-preview-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; overflow-y: auto;">
+        <div style="max-width: 900px; margin: 50px auto; background: #1a1a2e; border-radius: 10px; border: 1px solid #333; min-height: 80vh;">
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 15px 20px; border-bottom: 1px solid #333;">
+                <h3 id="preview-title" style="color: #00d4ff; margin: 0;">预览</h3>
+                <button onclick="closePreviewModal()" style="background: none; border: none; color: #888; font-size: 20px; cursor: pointer;">✕</button>
+            </div>
+            <div id="preview-content" style="padding: 20px; color: #ccc; line-height: 1.6;">
+                <p>加载中...</p>
+            </div>
+        </div>
+    </div>
+
     <script>
         let selectedTags = [];
 
@@ -882,30 +936,37 @@ var dashboardHTML = `
             loadKBItems();
         }
 
-        function loadKBItems() {
-            let url = '/api/kb/items?limit=20';
-            if (selectedTags.length > 0) {
-                url += '&tags=' + encodeURIComponent(selectedTags.join(','));
-            }
+        function loadKBItems(tag) {
+            let url = tag ? '/api/kb/list?tag=' + encodeURIComponent(tag) : '/api/kb/recent';
             
             fetch(url)
             .then(r => r.json())
             .then(data => {
                 const container = document.getElementById('kb-items-container');
-                if (data.items && data.items.length > 0) {
-                    container.innerHTML = data.items.map(item => 
-                        '<div class="kb-item" style="background: #16213e; padding: 15px; border-radius: 8px; margin-bottom: 10px; border-left: 3px solid #667eea;">' +
+                const items = data.items || data;
+                if (items && items.length > 0) {
+                    container.innerHTML = items.map(item => 
+                        '<div class="kb-item" data-id="' + encodeURIComponent(item.id) + '" data-title="' + encodeURIComponent(item.title) + '" style="background: #16213e; padding: 15px; border-radius: 8px; margin-bottom: 10px; border-left: 3px solid #667eea; cursor: pointer;">' +
                             '<div class="kb-item-title" style="font-weight: bold; color: #fff; margin-bottom: 8px; font-size: 15px;">' + escapeHtml(item.title) +
-                                '<a href="/share/' + item.id + '" class="kb-share-link" target="_blank" style="color: #00d4ff; text-decoration: none; margin-left: 10px;">🔗 分享</a>' +
+                                '<a href="/share/' + encodeURIComponent(item.id) + '" class="kb-share-link" target="_blank" onclick="event.stopPropagation();" style="color: #00d4ff; text-decoration: none; margin-left: 10px;">🔗 分享</a>' +
                             '</div>' +
                             '<div class="kb-item-meta" style="display: flex; gap: 15px; font-size: 12px; color: #888; flex-wrap: wrap;">' +
-                                '<span>影响分: <span style="background: #ff6b6b; color: white; padding: 2px 8px; border-radius: 4px; font-weight: bold;">' + item.impact_score.toFixed(2) + '</span></span>' +
+                                '<span>影响分: <span style="background: #ff6b6b; color: white; padding: 2px 8px; border-radius: 4px; font-weight: bold;">' + (item.impact_score || 0).toFixed(2) + '</span></span>' +
                                 '<span>' + new Date(item.created_at).toLocaleString() + '</span>' +
-                                (item.tags ? '<div style="display: flex; gap: 5px;">' + item.tags.map(t => '<span style="background: rgba(102, 126, 234, 0.2); color: #667eea; padding: 2px 8px; border-radius: 4px; font-size: 11px;">' + t + '</span>').join('') + '</div>' : '') +
+                                (item.tags ? '<div style="display: flex; gap: 5px;">' + item.tags.map(t => '<span style="background: rgba(102, 126, 234, 0.2); color: #667eea; padding: 2px 8px; border-radius: 4px; font-size: 11px;">' + escapeHtml(t) + '</span>').join('') + '</div>' : '') +
                             '</div>' +
                             (item.tldr ? '<div style="margin-top: 10px; padding: 10px; background: rgba(102, 126, 234, 0.1); border-radius: 6px; font-size: 13px; color: #ccc; line-height: 1.5;">' + escapeHtml(item.tldr) + '</div>' : '') +
                         '</div>'
                     ).join('');
+                    
+                    // Add click handlers using event delegation
+                    container.querySelectorAll('.kb-item').forEach(el => {
+                        el.addEventListener('click', function() {
+                            const itemId = decodeURIComponent(this.dataset.id);
+                            const title = decodeURIComponent(this.dataset.title);
+                            openPreviewModal(itemId, title);
+                        });
+                    });
                 } else {
                     container.innerHTML = '<p style="color: #888;">暂无数据</p>';
                 }
@@ -913,13 +974,58 @@ var dashboardHTML = `
             .catch(err => { console.error('Failed to load items:', err); });
         }
 
-        function filterByTag(tag) {
-            const index = selectedTags.indexOf(tag);
-            if (index > -1) { selectedTags.splice(index, 1); }
-            else { selectedTags.push(tag); }
+        function openPreviewModal(itemId, title) {
+            document.getElementById('preview-title').textContent = title || '预览';
+            document.getElementById('preview-content').innerHTML = '<p>加载中...</p>';
+            document.getElementById('kb-preview-modal').style.display = 'block';
+            document.body.style.overflow = 'hidden';
             
+            fetch('/share/' + encodeURIComponent(itemId))
+            .then(r => r.text())
+            .then(html => {
+                // Use iframe for safe content isolation
+                const iframe = document.createElement('iframe');
+                iframe.style.cssText = 'width: 100%; height: 70vh; border: none; background: #1a1a2e;';
+                iframe.sandbox = 'allow-same-origin';
+                const contentDiv = document.getElementById('preview-content');
+                contentDiv.innerHTML = '';
+                contentDiv.appendChild(iframe);
+                
+                // Write sanitized content to iframe
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                const bodyContent = doc.body ? doc.body.innerHTML : html;
+                
+                iframe.srcdoc = '<!DOCTYPE html><html><head><style>body{background:#1a1a2e;color:#ccc;padding:20px;font-family:system-ui;line-height:1.6}a{color:#00d4ff}img{max-width:100%}pre{background:#0f0f1e;padding:10px;border-radius:4px;overflow-x:auto}</style></head><body>' + bodyContent + '</body></html>';
+            })
+            .catch(err => {
+                document.getElementById('preview-content').innerHTML = '<p style="color: #ff6b6b;">加载失败: ' + escapeHtml(err.message) + '</p>';
+            });
+        }
+
+        function closePreviewModal() {
+            document.getElementById('kb-preview-modal').style.display = 'none';
+            document.body.style.overflow = '';
+        }
+
+        // Close modal on backdrop click
+        document.getElementById('kb-preview-modal').addEventListener('click', function(e) {
+            if (e.target === this) closePreviewModal();
+        });
+
+        let currentTagFilter = null;
+        
+        function filterByTag(tag) {
+            // Toggle tag selection
+            if (currentTagFilter === tag) {
+                currentTagFilter = null; // Deselect if already selected
+            } else {
+                currentTagFilter = tag;
+            }
+            
+            // Update UI
             document.querySelectorAll('.tag-item').forEach(el => {
-                if (selectedTags.includes(el.dataset.tag)) {
+                if (el.dataset.tag === currentTagFilter) {
                     el.style.background = '#00d4ff';
                     el.style.color = '#1a1a2e';
                     el.style.borderColor = '#00d4ff';
@@ -930,7 +1036,8 @@ var dashboardHTML = `
                 }
             });
             
-            loadKBItems();
+            // Load items with tag filter
+            loadKBItems(currentTagFilter);
         }
 
         function escapeHtml(text) {

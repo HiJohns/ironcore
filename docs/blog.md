@@ -15,3 +15,10 @@
 - **知识库系统 (KB System)**: 新增 internal/kb/ 包实现完整知识库功能，包括数据模型、数据库操作、HTTP 处理器、分享功能和 Dashboard 集成。支持 Markdown 内容存储、标签管理、AI 审计工作流。
 - **安全修复**: 修复 kb_handler 命令注入风险（改用临时文件传递内容）、添加 10MB 内容大小限制、修复 models 索引越界、完善全错误处理（RowsAffected、fmt.Sscanf、模板渲染）。
 
+## 2026-03-09
+
+### Raw Entry
+
+- **KB Dashboard 交互优化**: 实现 Tab 状态持久化(localStorage)、顶部栏 UI 降级(Micro-Status-Bar)、最近列表 API(/api/kb/recent, /api/kb/list)、预览模态框、标签云点击交互。
+- **安全加固**: 修复 kb_handler 输入验证(fmt.Sscanf→strconv.Atoi, limit≤100)、错误信息泄露(改为日志记录)、XSS 防护(data-*属性+事件委托)、DOM Clobbering 防护(iframe sandbox 隔离)、tag 参数正则验证。
+

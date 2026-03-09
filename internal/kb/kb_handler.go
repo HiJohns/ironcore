@@ -10,6 +10,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -92,6 +94,8 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware func(http.Ha
 	// Protected routes
 	mux.HandleFunc("/api/kb/ingest", authMiddleware(h.HandleIngest))
 	mux.HandleFunc("/api/kb/items", authMiddleware(h.HandleListItems))
+	mux.HandleFunc("/api/kb/recent", authMiddleware(h.HandleRecentItems))
+	mux.HandleFunc("/api/kb/list", authMiddleware(h.HandleListByTag))
 	mux.HandleFunc("/api/kb/tags", authMiddleware(h.HandleListTags))
 	mux.HandleFunc("/api/kb/status", authMiddleware(h.HandleGetStatus))
 }
@@ -190,18 +194,22 @@ func (h *Handler) HandleListItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse query parameters
+	// Parse query parameters with validation
 	limit := 20
 	offset := 0
 
 	if l := r.URL.Query().Get("limit"); l != "" {
-		if n, err := fmt.Sscanf(l, "%d", &limit); err != nil || n != 1 || limit <= 0 {
-			limit = 20
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
+			if parsed > 100 {
+				limit = 100 // Maximum limit to prevent DoS
+			} else {
+				limit = parsed
+			}
 		}
 	}
 	if o := r.URL.Query().Get("offset"); o != "" {
-		if n, err := fmt.Sscanf(o, "%d", &offset); err != nil || n != 1 || offset < 0 {
-			offset = 0
+		if parsed, err := strconv.Atoi(o); err == nil && parsed >= 0 {
+			offset = parsed
 		}
 	}
 
@@ -214,7 +222,71 @@ func (h *Handler) HandleListItems(w http.ResponseWriter, r *http.Request) {
 	// Retrieve items
 	items, err := h.db.ListKBItems(tags, limit, offset)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to retrieve items: %v", err), http.StatusInternalServerError)
+		log.Printf("[ERROR] Failed to retrieve KB items: %v", err)
+		http.Error(w, "Failed to retrieve items", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(items)
+}
+
+// HandleRecentItems handles GET /api/kb/recent endpoint - returns last 20 items
+func (h *Handler) HandleRecentItems(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Retrieve recent 20 items without tag filter
+	items, err := h.db.ListKBItems(nil, 20, 0)
+	if err != nil {
+		log.Printf("[ERROR] Failed to retrieve recent KB items: %v", err)
+		http.Error(w, "Failed to retrieve items", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(items)
+}
+
+// HandleListByTag handles GET /api/kb/list?tag=xxx endpoint
+func (h *Handler) HandleListByTag(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse and validate tag parameter
+	tag := r.URL.Query().Get("tag")
+	if tag == "" || len(tag) > 50 {
+		http.Error(w, "Invalid tag parameter", http.StatusBadRequest)
+		return
+	}
+	// Validate tag format (alphanumeric, underscore, hyphen)
+	validTagPattern := regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+	if !validTagPattern.MatchString(tag) {
+		http.Error(w, "Invalid tag format", http.StatusBadRequest)
+		return
+	}
+
+	// Parse limit parameter with validation
+	limit := 20
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
+			if parsed > 100 {
+				limit = 100 // Maximum limit to prevent DoS
+			} else {
+				limit = parsed
+			}
+		}
+	}
+
+	// Retrieve items with single tag filter
+	items, err := h.db.ListKBItems([]string{tag}, limit, 0)
+	if err != nil {
+		log.Printf("[ERROR] Failed to retrieve KB items by tag: %v", err)
+		http.Error(w, "Failed to retrieve items", http.StatusInternalServerError)
 		return
 	}
 
