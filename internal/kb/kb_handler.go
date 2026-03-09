@@ -22,6 +22,12 @@ import (
 // maxContentSize is the maximum allowed content size (10MB)
 const maxContentSize = 10 * 1024 * 1024
 
+// jobTTL is the time-to-live for ingestion jobs (24 hours)
+const jobTTL = 24 * time.Hour
+
+// cleanupInterval is how often to run cleanup (every hour)
+const cleanupInterval = time.Hour
+
 // ingestJob represents an async ingestion job
 type ingestJob struct {
 	ID        string
@@ -33,16 +39,72 @@ type ingestJob struct {
 
 // jobStore stores ingestion job statuses
 var (
-	jobStore = make(map[string]*ingestJob)
-	jobMux   sync.RWMutex
+	jobStore       = make(map[string]*ingestJob)
+	jobMux         sync.RWMutex
+	cleanupStarted sync.Once
 )
 
-// getJob retrieves a job by ID
+// getJob retrieves a job by ID, returns nil if expired
+// Uses RLock for reads, only upgrades to Lock when deletion is needed
 func getJob(id string) (*ingestJob, bool) {
+	// Phase 1: Read with RLock
 	jobMux.RLock()
-	defer jobMux.RUnlock()
 	job, exists := jobStore[id]
-	return job, exists
+	if !exists {
+		jobMux.RUnlock()
+		return nil, false
+	}
+
+	// Fast path: job not expired, return immediately
+	if time.Since(job.UpdatedAt) <= jobTTL {
+		jobMux.RUnlock()
+		return job, true
+	}
+	jobMux.RUnlock()
+
+	// Phase 2: Job expired, need to delete - upgrade to Lock
+	jobMux.Lock()
+	defer jobMux.Unlock()
+
+	// Double-check after acquiring write lock (another goroutine might have deleted it)
+	if job, exists := jobStore[id]; exists {
+		if time.Since(job.UpdatedAt) > jobTTL {
+			delete(jobStore, id)
+			log.Printf("[KB] Expired job %s cleaned up during get", id)
+		} else {
+			// Job was renewed during lock upgrade
+			return job, true
+		}
+	}
+	return nil, false
+}
+
+// cleanupExpiredJobs removes expired jobs from the store
+func cleanupExpiredJobs() {
+	jobMux.Lock()
+	defer jobMux.Unlock()
+	now := time.Now()
+	expiredCount := 0
+	for id, job := range jobStore {
+		if now.Sub(job.UpdatedAt) > jobTTL {
+			delete(jobStore, id)
+			expiredCount++
+		}
+	}
+	if expiredCount > 0 {
+		log.Printf("[KB] Cleaned up %d expired ingestion jobs", expiredCount)
+	}
+}
+
+// startJobCleanupRoutine starts a background goroutine to periodically clean up expired jobs
+func startJobCleanupRoutine() {
+	go func() {
+		ticker := time.NewTicker(cleanupInterval)
+		defer ticker.Stop()
+		for range ticker.C {
+			cleanupExpiredJobs()
+		}
+	}()
 }
 
 // updateJob updates a job's status
@@ -58,6 +120,9 @@ func updateJob(id, status, message string) {
 
 // createJob creates a new ingestion job
 func createJob(id string) *ingestJob {
+	// Ensure cleanup routine is started (only once)
+	cleanupStarted.Do(startJobCleanupRoutine)
+
 	jobMux.Lock()
 	defer jobMux.Unlock()
 	job := &ingestJob{

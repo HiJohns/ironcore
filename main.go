@@ -1197,12 +1197,13 @@ func main() {
 	if kbHandler != nil {
 		kbHandler.RegisterRoutes(http.DefaultServeMux, authMiddleware)
 		http.HandleFunc("/api/kb/dashboard-data", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
-			db, _ := kb.NewDB(dbPath)
-			if db != nil {
-				defer db.Close()
-				dh := &kb.DashboardHandler{}
-				dh.HandleKnowledgeBaseData(w, r)
+			if db == nil {
+				http.Error(w, "Database not initialized", http.StatusInternalServerError)
+				return
 			}
+			kbDB := kb.NewDBFromConn(db)
+			dh := kb.NewDashboardHandlerFromDB(kbDB)
+			dh.HandleKnowledgeBaseData(w, r)
 		}))
 	}
 
@@ -1324,9 +1325,8 @@ func performAudit(endTime time.Time) {
 		}
 	}
 
-	silentPeriod := isSilentPeriod()
-
 	var assetStatuses []AssetStatus
+	anyMarketOpen := false
 
 	// Process global assets (only if market is open)
 	for _, asset := range globalAssets {
@@ -1334,6 +1334,7 @@ func performAudit(endTime time.Time) {
 			log.Printf("⏸️  %s 市场休市，跳过 3-Sigma 审计", asset.Symbol)
 			continue
 		}
+		anyMarketOpen = true
 		status := calculateAssetStatusWithConfig(asset, dxyMap, endTime, "global")
 		assetStatuses = append(assetStatuses, status)
 	}
@@ -1344,6 +1345,7 @@ func performAudit(endTime time.Time) {
 			log.Printf("⏸️  %s 市场休市，跳过 3-Sigma 审计", asset.Symbol)
 			continue
 		}
+		anyMarketOpen = true
 		status := calculateAssetStatusWithConfig(asset, dxyMap, endTime, "china")
 		if len(hs300Map) > 0 {
 			status.HS300Corr = calculateHS300Corr(asset.Symbol, hs300Map, endTime)
@@ -1373,7 +1375,7 @@ func performAudit(endTime time.Time) {
 		Assets:           assetStatuses,
 		VixDxyCorr:       vixDxyCorr,
 		VixWarning:       vixWarning,
-		SilentPeriod:     silentPeriod,
+		SilentPeriod:     !anyMarketOpen,
 		CorrAcceleration: acceleration,
 		Resonance:        resonance,
 		GeopoliticalRisk: geoRisk,
@@ -1539,7 +1541,7 @@ func calculateAssetStatusWithConfig(asset AssetConfig, dxyMap map[string]float64
 					log.Printf("[%s] High impact news detected (%.2f), lowering sigma threshold to %.2f",
 						asset.Symbol, status.ImpactScore, effectiveLimit)
 				}
-				if math.Abs(zScore) > effectiveLimit && !isSilentPeriod() {
+				if math.Abs(zScore) > effectiveLimit && isMarketOpen(asset) {
 					status.IsCritical = true
 					status.AlertMessage = fmt.Sprintf("%.1f-Sigma异动! z=%.2f", effectiveLimit, zScore)
 					if status.ImpactScore >= 0.8 {
@@ -1819,25 +1821,7 @@ func calculateMarketStatuses(globalAssets, chinaAssets []AssetConfig) []MarketSt
 	return statuses
 }
 
-func isSilentPeriod() bool {
-	now := time.Now()
-	loc := loadLocationSafe()
-	beijingNow := now.In(loc)
-
-	weekday := beijingNow.Weekday()
-	if weekday == time.Saturday || weekday == time.Sunday {
-		return true
-	}
-
-	// Market closed hours (15:00 - next day 09:00)
-	hour := beijingNow.Hour()
-	if hour >= 15 || hour < 9 {
-		return true
-	}
-
-	return false
-}
-
+// isAuctionTime checks if it's currently in auction period (09:15-09:25 China time)
 func isAuctionTime() bool {
 	now := time.Now()
 	loc := loadLocationSafe()
@@ -1936,22 +1920,25 @@ func triggerCapitalAlert(asset AssetConfig, volume float64, ratio float64) {
 }
 
 func checkAndSendAlert(vixWarning bool, assets []AssetStatus) {
-	if isSilentPeriod() {
-		log.Println("🔇 静默期，跳过报警")
-		return
-	}
-
 	shouldAlert := vixWarning
+	criticalAssetsWithOpenMarket := []AssetStatus{}
 
 	for _, a := range assets {
 		if a.IsCritical {
-			shouldAlert = true
-			break
+			// Check if the asset's market is currently open before alerting
+			if asset, found := globalConfig.GetAssetBySymbol(a.Symbol); found {
+				if isMarketOpen(asset) {
+					shouldAlert = true
+					criticalAssetsWithOpenMarket = append(criticalAssetsWithOpenMarket, a)
+				} else {
+					log.Printf("🔇 %s 市场休市，跳过该标的报警", a.Symbol)
+				}
+			}
 		}
 	}
 
 	if shouldAlert && smtpUser != "" && smtpPass != "" {
-		sendAlertEmail(vixWarning, assets)
+		sendAlertEmail(vixWarning, criticalAssetsWithOpenMarket)
 	}
 }
 

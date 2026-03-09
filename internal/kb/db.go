@@ -37,6 +37,12 @@ func (db *DB) Close() error {
 	return db.conn.Close()
 }
 
+// NewDBFromConn creates a new knowledge base database instance from existing connection
+// This is useful when you want to reuse an existing database connection
+func NewDBFromConn(conn *sql.DB) *DB {
+	return &DB{conn: conn}
+}
+
 // InitSchema creates the necessary tables for the knowledge base
 func (db *DB) InitSchema() error {
 	// Create kb_items table with string ID (UUID or Slug)

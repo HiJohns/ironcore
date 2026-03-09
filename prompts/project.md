@@ -1,5 +1,25 @@
 [TODO]
 
+### 16. 统一时区准入 (Timezone Unification)
+- 废弃冗余的 isSilentPeriod() 函数
+- 强制所有审计入口（包括邮件发送逻辑）调用 isMarketOpen(asset)
+- 确保北京时间周一中午时，由于 America/New_York 处于闭市态，系统不再处理 USO 等标的
+- 状态：🔄 执行中
+
+### 17. 数据库连接修复 (DB Connection Fix)
+- 修正 main.go:1199-1207
+- 确保 DashboardData 接口正确使用已初始化的全局 DB 实例
+- 状态：⏳ 待执行
+
+### 18. 异步清理机制 (Async Cleanup)
+- 在 kb_handler.go 中为 jobStore 增加 TTL（过期时间）逻辑
+- 防止内存泄漏
+- 状态：⏳ 待执行
+
+[READY]
+
+[WIP]
+
 ### 6. 知识库系统扩展 (Knowledge Base System)
 
 **6.1 数据库架构扩展**
@@ -62,7 +82,63 @@
 
 [READY]
 
+### 12. 资产属性扩展 (Asset Timezone Config)
+- 修改 Config 结构体，为每个资产类别增加 market_timezone 字段
+- 在 config.yaml 中，为 global_macro 指定 America/New_York，为 china_power_grid 指定 Asia/Shanghai
+- 状态：✅ 已完成
+
+### 13. 抑制周末错误警报 (Market Open Detection)
+- 增加 isMarketOpen(asset) 函数，识别特定市场的节假日和周末
+- 支持 America/New_York（美股 09:30-16:00）和 Asia/Shanghai（A股 09:30-11:30, 13:00-15:00）
+- 状态：✅ 已完成
+
+### 14. 审计调度器改造 (Trading Hours Audit)
+- 在 performAudit 函数中，对每个资产调用 isMarketOpen() 检查市场状态
+- 仅当资产市场开放时才触发 3-Sigma 和竞价审计
+- 状态：✅ 已完成
+
+### 15. UI 状态同步 (Dashboard Silent Period Display)
+- 新增 MarketStatusInfo 结构体和 calculateMarketStatuses() 函数
+- Dashboard 顶部状态栏按市场分流显示：🇨🇳 交易中 / 🇺🇸 静默期（周末）
+- 状态：✅ 已完成
+
+### 13. 审计调度器改造 (Trading Hours Audit)
+- 在 main.go 的审计循环中，调用 time.LoadLocation 获取资产对应的时区
+- 逻辑判定：仅当该资产所在时区的 Now() 处于其法定交易时段内时，才触发 3-Sigma 和竞价审计
+- 状态：⏳ 待执行
+
+### 14. 抑制周末错误警报 (Market Open Detection)
+- 增加 isMarketOpen(asset) 函数，识别特定市场的节假日和周末
+- 例如：北京时间周一早上，系统应对 global_macro 标的保持静默，直到北京时间周一晚间美股开盘
+- 状态：⏳ 待执行
+
+### 15. UI 状态同步 (Dashboard Silent Period Display)
+- Dashboard 顶部的"静默期"状态应按资产分流显示
+- 例如："🇨🇳 交易中 | 🇺🇸 静默期（周末）"
+- 状态：⏳ 待执行
+
+[READY]
+
 [DONE]
+
+### [2026-03-09] 时区统一、数据库连接修复、异步清理机制
+**Status**: ✅ 已完成并通过代码审查
+**Patches**: review_IronCore_2.0_Fixes.patch
+
+**核心变更：**
+1. **时区统一准入 (Timezone Unification)**
+   - 废弃冗余的 `isSilentPeriod()` 函数
+   - 统一使用 `isMarketOpen(asset)` 按资产判断市场状态
+   - 修复北京时间周一中午美股标的不被错误处理的问题
+
+2. **数据库连接修复 (DB Connection Fix)**
+   - 新增 `NewDBFromConn()` 和 `NewDashboardHandlerFromDB()` 函数
+   - DashboardData 接口复用全局 DB 实例，避免连接泄漏
+
+3. **异步清理机制 (Async Cleanup)**
+   - jobStore 添加 TTL(24小时) 过期逻辑
+   - 每小时后台清理协程，使用 `sync.Once` 确保只启动一次
+   - 锁策略优化：RLock 读取，仅过期时升级 Lock，双重检查防竞争
 
 ### [2026-03-08] 知识库系统与动态配置引擎安全修复
 **Status**: ✅ 已完成并通过代码审查

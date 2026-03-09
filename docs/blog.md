@@ -2,18 +2,9 @@
 
 ## 2026-03-08
 
-### Raw Entry
+### Daily Summary
 
-- **IronCore 警报系统**: 修复周末市场关闭时仍持续触发误报的问题。在 `isSilentPeriod()` 函数中添加周末检测逻辑，同时在数据收集器中加入市场关闭判断，避免在周六/周日收集无效数据并产生虚假警报。
-- **Build 脚本优化**: 修复 build.sh 在 release 模式下因远程目录不存在导致 SCP 上传失败的问题，在上传文件前自动执行 mkdir -p 创建目标目录。
-- **IronCore 动态配置系统**: 引入基于 YAML 的配置中心(config.yaml)，实现资产列表、监控阈值、API 参数等配置的热重载机制，取代原有的硬编码配置。
-- **数据采集增强**: 扩展 collector.py 采集换手率(turnover_rate)字段，同步更新数据库表结构与 Go 引擎查询逻辑。
-- **集合竞价监控**: 新增开盘集合竞价时段(09:25)成交量异常检测，识别"换血资金进场"信号并触发特级警报。
-- **新闻事件分析**: 引入 news_events 表存储 LLM 分析后的新闻事件，计算 impact_score 与 sentiment，整合至战术建议生成引擎。
-- **战术建议引擎**: 基于地缘风险评级、板块共振状态、3-Sigma 异动等多维度数据，自动生成战术建议并展示于 Dashboard。
-- **并发安全**: 为全局状态访问添加 mutex 锁保护，防止审计循环与 HTTP API 处理之间的竞态条件。
-- **知识库系统 (KB System)**: 新增 internal/kb/ 包实现完整知识库功能，包括数据模型、数据库操作、HTTP 处理器、分享功能和 Dashboard 集成。支持 Markdown 内容存储、标签管理、AI 审计工作流。
-- **安全修复**: 修复 kb_handler 命令注入风险（改用临时文件传递内容）、添加 10MB 内容大小限制、修复 models 索引越界、完善全错误处理（RowsAffected、fmt.Sscanf、模板渲染）。
+**IronCore 2.0 核心功能交付**: 完成警报系统周末检测、动态配置中心、数据采集增强(换手率)、集合竞价监控、新闻事件分析、战术建议引擎、并发安全加固及知识库系统(KB)完整实现，包含安全修复和 Build 脚本优化。
 
 ## 2026-03-09
 
@@ -22,4 +13,7 @@
 - **KB Dashboard 交互优化**: 实现 Tab 状态持久化(localStorage)、顶部栏 UI 降级(Micro-Status-Bar)、最近列表 API(/api/kb/recent, /api/kb/list)、预览模态框、标签云点击交互。
 - **安全加固**: 修复 kb_handler 输入验证(fmt.Sscanf→strconv.Atoi, limit≤100)、错误信息泄露(改为日志记录)、XSS 防护(data-*属性+事件委托)、DOM Clobbering 防护(iframe sandbox 隔离)、tag 参数正则验证。
 - **市场时区审计系统**: 实现按资产时区的智能审计调度，支持美股(America/New_York)和A股(Asia/Shanghai)交易时段检测，休市期间自动跳过3-Sigma审计和竞价审计，Dashboard显示分市场状态(🇺🇸/🇨🇳)。
+- **时区统一准入修复**: 废弃冗余的 isSilentPeriod() 函数，统一使用 isMarketOpen(asset) 按资产判断市场状态，确保美股标的在北京时间周一中午（美股周日休市）不被错误处理。
+- **数据库连接修复**: 修复 DashboardData 接口重复创建数据库连接的问题，新增 NewDBFromConn() 和 NewDashboardHandlerFromDB() 函数，实现全局 DB 实例复用，避免连接泄漏。
+- **异步清理机制**: 为 kb_handler.go 的 jobStore 添加 TTL(24小时) 过期逻辑和每小时后台清理协程，使用 sync.Once 确保协程只启动一次，防止内存泄漏。
 

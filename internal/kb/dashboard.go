@@ -20,6 +20,11 @@ func NewDashboardHandler(dbPath string) (*DashboardHandler, error) {
 	return &DashboardHandler{db: db}, nil
 }
 
+// NewDashboardHandlerFromDB creates a new dashboard handler from existing DB instance
+func NewDashboardHandlerFromDB(db *DB) *DashboardHandler {
+	return &DashboardHandler{db: db}
+}
+
 // Close closes the handler's database connection
 func (h *DashboardHandler) Close() error {
 	return h.db.Close()
