@@ -112,9 +112,9 @@ var (
 	receiver      string
 	dbPath        string
 	httpPort      string
-	AdminUser     string = getEnvOrDefault("IRONCORE_ADMIN_USER", "admin")
-	AdminPass     string = os.Getenv("IRONCORE_ADMIN_PASS")
-	SessionSecret string = os.Getenv("IRONCORE_SESSION_SECRET")
+	AdminUser     string
+	AdminPass     string
+	SessionSecret string
 	version       string
 )
 
@@ -987,6 +987,17 @@ var loginHTML = `
 </html>`
 
 func main() {
+	// Initialize credentials: prefer ldflags-injected values, fallback to env vars
+	if AdminUser == "" {
+		AdminUser = getEnvOrDefault("IRONCORE_ADMIN_USER", "admin")
+	}
+	if AdminPass == "" {
+		AdminPass = os.Getenv("IRONCORE_ADMIN_PASS")
+	}
+	if SessionSecret == "" {
+		SessionSecret = os.Getenv("IRONCORE_SESSION_SECRET")
+	}
+
 	versionFlag := flag.Bool("v", false, "显示版本")
 	dateFlag := flag.String("date", "", "审计结束日期 (格式: YYYY-MM-DD)")
 	_ = flag.String("mode", "prod", "运行模式: prod(生产) 或 test(测试)")
