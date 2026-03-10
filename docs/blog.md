@@ -6,6 +6,14 @@
 
 **IronCore 2.0 核心功能交付**: 完成警报系统周末检测、动态配置中心、数据采集增强(换手率)、集合竞价监控、新闻事件分析、战术建议引擎、并发安全加固及知识库系统(KB)完整实现，包含安全修复和 Build 脚本优化。
 
+## 2026-03-10
+
+### Raw Entry
+
+- **Bugfix: 标签页点击标签 AJAX 返回 400**: 放宽标签验证正则表达式 `^[a-zA-Z0-9_-]+$` → `^[\p{L}\p{N}_\-\s\.]+$`，支持 Unicode 字母（中文、日文等）、数字、连字符、空格和句点。
+- **Bugfix: sidebar-content HTML 被过度 escape**: 修复 sanitizeHtml 函数，从 `textContent = html` 改为 `innerHTML = html` 正确解析 HTML，使用 DOM API 清理 script 标签、on* 事件属性和 javascript: 链接，提升安全性的同时确保 Markdown 渲染的 HTML 正常显示。
+
+
 ## 2026-03-09
 
 ### Raw Entry

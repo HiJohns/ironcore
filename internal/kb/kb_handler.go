@@ -329,8 +329,9 @@ func (h *Handler) HandleListByTag(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid tag parameter", http.StatusBadRequest)
 		return
 	}
-	// Validate tag format (alphanumeric, underscore, hyphen)
-	validTagPattern := regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+	// Validate tag format: allow Unicode letters, numbers, and common separators
+	// This supports tags like "open-source", "ai-agent", "人工智能", "VIX"
+	validTagPattern := regexp.MustCompile(`^[\p{L}\p{N}_\-\s\.]+$`)
 	if !validTagPattern.MatchString(tag) {
 		http.Error(w, "Invalid tag format", http.StatusBadRequest)
 		return

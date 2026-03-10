@@ -4,6 +4,20 @@
 
 [READY]
 
+[DONE]
+
+### Bug: 标签页点击标签 AJAX 返回 400
+- 问题：知识库标签云点击标签时，AJAX 请求服务器端返回 400 错误
+- 状态：✅ 已完成
+- 修复：放宽标签验证正则表达式，支持 Unicode 字符和常见分隔符
+
+### Bug: sidebar-content HTML 被过度 escape
+- 问题：sidebar-content 中所有字符都被 escape 了，包括 HTML 标记，导致渲染异常
+- 状态：✅ 已完成
+- 修复：修复 sanitizeHtml 函数，使用 innerHTML 解析而非 textContent，并通过 DOM 操作清理危险元素
+
+[READY]
+
 [READY]
 
 [TODO]

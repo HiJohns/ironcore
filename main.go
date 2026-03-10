@@ -1175,11 +1175,28 @@ var dashboardHTML = `
         // Sanitize HTML content to prevent XSS attacks
         function sanitizeHtml(html) {
             const temp = document.createElement('div');
-            temp.textContent = html;
-            // Basic XSS protection: remove script tags and event handlers
-            return temp.innerHTML
-                .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-                .replace(/\son\w+\s*=\s*["'][^"']*["']/gi, '');
+            temp.innerHTML = html;
+            
+            // Remove all script tags
+            const scripts = temp.querySelectorAll('script');
+            scripts.forEach(script => script.remove());
+            
+            // Remove dangerous event handlers from all elements
+            const allElements = temp.querySelectorAll('*');
+            allElements.forEach(el => {
+                const attributes = Array.from(el.attributes);
+                attributes.forEach(attr => {
+                    if (attr.name.startsWith('on')) {
+                        el.removeAttribute(attr.name);
+                    }
+                });
+            });
+            
+            // Also remove javascript: URLs
+            const links = temp.querySelectorAll('a[href^="javascript:"]');
+            links.forEach(link => link.removeAttribute('href'));
+            
+            return temp.innerHTML;
         }
 
         function openPreviewModal(itemId, title) {
